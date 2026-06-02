@@ -1,0 +1,19 @@
+[Unit]
+Description=FamilyRoot family history server
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/familyroot/backend
+Environment=PORT=5050
+Environment=DEBUG=0
+Environment=FAMILYROOT_MEDIA=/home/%i/familyroot/media
+ExecStart=/home/%i/familyroot/venv/bin/python app.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

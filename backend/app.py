@@ -56,7 +56,7 @@ def health():
     return jsonify({"status": "ok", "db": db_ok, "version": "0.1.0"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5050))
-    debug = os.environ.get("DEBUG", "1") == "1"
+    port  = int(os.environ.get("PORT", 5050))
+    debug = os.environ.get("DEBUG", "0") == "1"
     print(f"\n  FamilyRoot running at http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port, debug=debug)
