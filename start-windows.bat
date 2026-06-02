@@ -5,11 +5,11 @@ color 0A
 
 echo.
 echo  ==========================================
-echo   FamilyRoot — Windows launcher
+echo   FamilyRoot - Windows launcher
 echo  ==========================================
 echo.
 
-:: ── Find Python ──────────────────────────────────────────────────────────────
+:: Find Python
 set PYTHON=
 for %%P in (python python3) do (
     if not defined PYTHON (
@@ -37,13 +37,14 @@ if errorlevel 1 (
 )
 echo  [OK] %PYTHON% found
 
-:: ── Locate backend folder ─────────────────────────────────────────────────────
+:: Locate folders
 set "SCRIPT_DIR=%~dp0"
 set "BACKEND=%SCRIPT_DIR%backend"
 set "FRONTEND=%SCRIPT_DIR%frontend"
 set "DATA_DIR=%SCRIPT_DIR%data"
 set "MEDIA_DIR=%SCRIPT_DIR%media"
 set "VENV=%SCRIPT_DIR%venv"
+set "VENV_PYTHON=%VENV%\Scripts\python.exe"
 
 if not exist "%BACKEND%\app.py" (
     echo  [ERROR] Cannot find backend\app.py
@@ -52,37 +53,62 @@ if not exist "%BACKEND%\app.py" (
     exit /b 1
 )
 
-:: ── Create data/media dirs ────────────────────────────────────────────────────
-if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
-if not exist "%MEDIA_DIR%\originals"  mkdir "%MEDIA_DIR%\originals"
-if not exist "%MEDIA_DIR%\thumbnails" mkdir "%MEDIA_DIR%\thumbnails"
+:: Check disk space (need at least 500 MB free)
+for /f "tokens=3" %%A in ('dir /-c "%SCRIPT_DIR%" ^| findstr "bytes free"') do set FREE_BYTES=%%A
+set FREE_BYTES=%FREE_BYTES:,=%
+if defined FREE_BYTES (
+    set /a FREE_MB=%FREE_BYTES:~0,-6%
+    if !FREE_MB! LSS 500 (
+        echo  [ERROR] Less than 500 MB free on this drive.
+        echo  pip needs space to download packages.
+        echo  Free up disk space on C: then try again.
+        pause
+        exit /b 1
+    )
+    echo  [OK] Disk space OK ~!FREE_MB! MB free
+)
 
-:: ── Python venv ───────────────────────────────────────────────────────────────
-if not exist "%VENV%\Scripts\python.exe" (
+:: Create dirs
+if not exist "%DATA_DIR%"              mkdir "%DATA_DIR%"
+if not exist "%MEDIA_DIR%\originals"   mkdir "%MEDIA_DIR%\originals"
+if not exist "%MEDIA_DIR%\thumbnails"  mkdir "%MEDIA_DIR%\thumbnails"
+
+:: Create venv
+if not exist "%VENV_PYTHON%" (
     echo  Creating Python virtual environment...
     %PYTHON% -m venv "%VENV%"
     if errorlevel 1 (
-        echo  [ERROR] Could not create venv. Try: pip install virtualenv
+        echo  [ERROR] Could not create venv.
         pause
         exit /b 1
     )
 )
 
-set "VENV_PYTHON=%VENV%\Scripts\python.exe"
-set "VENV_PIP=%VENV%\Scripts\pip.exe"
-
+:: Install Python deps
+:: --no-cache-dir prevents pip writing large temp files to disk
 echo  Installing Python dependencies ^(first run may take a minute^)...
-"%VENV_PIP%" install --upgrade pip --quiet
-"%VENV_PIP%" install -r "%BACKEND%\requirements.txt" --quiet
+"%VENV_PYTHON%" -m pip install --upgrade pip --no-cache-dir --quiet
+"%VENV_PYTHON%" -m pip install -r "%BACKEND%\requirements.txt" --no-cache-dir --quiet
 if errorlevel 1 (
     echo.
-    echo  [WARN] Some packages failed. Trying without face AI...
+    echo  [WARN] Some packages failed ^(face AI is optional on Windows^).
     echo  Core features ^(photos, Gramps import, map^) will still work.
     echo.
 )
 echo  [OK] Python dependencies ready
 
-:: ── Build frontend ─────────────────────────────────────────────────────────────
+:: Check Flask actually installed (catches the disk-full case)
+"%VENV_PYTHON%" -c "import flask" >nul 2>&1
+if errorlevel 1 (
+    echo  [ERROR] Flask did not install - likely not enough disk space.
+    echo  Free up space on C: and delete the venv folder, then retry.
+    echo  venv folder: %VENV%
+    pause
+    exit /b 1
+)
+echo  [OK] Flask confirmed
+
+:: Build frontend
 set BUILT_FRONTEND=0
 if exist "%FRONTEND%\dist\index.html" (
     echo  [OK] Using existing frontend build
@@ -92,25 +118,28 @@ if exist "%FRONTEND%\dist\index.html" (
 if %BUILT_FRONTEND%==0 (
     where node >nul 2>&1
     if not errorlevel 1 (
-        echo  Building React frontend...
+        echo  Installing Node dependencies...
         pushd "%FRONTEND%"
-        call npm install --silent
-        call npm run build
+        call npm install --prefer-offline
+        echo  Building React frontend...
+        :: Use npx vite build - more reliable than npm run build on Windows
+        call npx vite build
         popd
         if exist "%FRONTEND%\dist\index.html" (
             echo  [OK] Frontend built
             set BUILT_FRONTEND=1
         ) else (
-            echo  [WARN] Frontend build failed — UI will not load
+            echo  [WARN] Frontend build failed - UI will not load.
+            echo  Try: cd frontend ^&^& npx vite build
         )
     ) else (
-        echo  [WARN] Node.js not found — skipping frontend build.
-        echo         Download from https://nodejs.org if you need the UI.
-        echo         The REST API will still work.
+        echo  [WARN] Node.js not found - skipping frontend build.
+        echo         Download from https://nodejs.org then re-run this script.
+        echo         The REST API will still work without Node.
     )
 )
 
-:: ── Start Flask ───────────────────────────────────────────────────────────────
+:: Start Flask
 set PORT=5050
 set DEBUG=0
 set "FAMILYROOT_MEDIA=%MEDIA_DIR%"
@@ -120,10 +149,9 @@ echo  Starting FamilyRoot on http://localhost:%PORT%
 echo  Press Ctrl+C to stop.
 echo.
 
-:: Open browser after a short delay (give Flask time to start)
+:: Open browser after short delay
 start "" /min cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:%PORT%"
 
-:: Run Flask in this window so Ctrl+C stops it cleanly
 cd /d "%BACKEND%"
 "%VENV_PYTHON%" app.py
 

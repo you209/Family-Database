@@ -222,15 +222,26 @@ class App(tk.Tk):
         threading.Thread(target=self._install_worker, daemon=True).start()
 
     def _install_worker(self):
-        self._log_line("── Install / Update ─────────────────────", "dim")
+        self._log_line("-- Install / Update ---------------------", "dim")
 
         # Dirs
         for d in [DATA, MEDIA / "originals", MEDIA / "thumbnails"]:
             d.mkdir(parents=True, exist_ok=True)
 
+        # Check available disk space (need at least 500 MB)
+        import shutil as _shutil
+        free_mb = _shutil.disk_usage(ROOT).free // (1024 * 1024)
+        if free_mb < 500:
+            self._log_line(f"WARNING: only {free_mb} MB free on this drive.", "warn")
+            self._log_line("pip needs ~300 MB of temp space to download packages.", "warn")
+            self._log_line("Free up space on your C: drive and try again.", "error")
+            self._install_done()
+            return
+        self._log_line(f"Disk space OK: {free_mb} MB free", "dim")
+
         # Venv
         if not VENV_PYTHON.exists():
-            self._log_line("Creating Python virtual environment…")
+            self._log_line("Creating Python virtual environment...")
             ok = self._run_cmd([sys.executable, "-m", "venv", str(VENV)])
             if not ok:
                 self._log_line("Failed to create venv.", "error")
@@ -240,35 +251,50 @@ class App(tk.Tk):
         else:
             self._log_line("Virtual environment already exists.", "dim")
 
-        # pip
-        self._log_line("Installing Python dependencies…")
-        self._run_cmd([str(VENV_PIP), "install", "--upgrade", "pip", "-q"])
-        ok = self._run_cmd([str(VENV_PIP), "install",
+        # pip — use --no-cache-dir so pip doesn't buffer whole packages to
+        # the temp drive (the cause of "No space left on device" on full disks)
+        self._log_line("Installing Python dependencies...")
+        self._run_cmd([str(VENV_PYTHON), "-m", "pip", "install",
+                       "--upgrade", "pip", "--no-cache-dir", "-q"])
+        ok = self._run_cmd([str(VENV_PYTHON), "-m", "pip", "install",
+                            "--no-cache-dir",
                             "-r", str(BACKEND / "requirements.txt"), "-q"])
         if ok:
             self._log_line("Python dependencies installed.", "success")
         else:
-            self._log_line("Some packages failed (face AI may be unavailable on Windows).", "warn")
-            self._log_line("Core features will still work.", "warn")
+            self._log_line("Some packages failed (face AI is optional on Windows).", "warn")
+            self._log_line("Core features (photos, Gramps, map) still work.", "warn")
 
         # Node / frontend
         dist_index = FRONTEND / "dist" / "index.html"
         if dist_index.exists():
-            self._log_line("Frontend already built — skipping.", "dim")
+            self._log_line("Frontend already built -- skipping.", "dim")
         else:
             node = self._find_exe("node")
             npm  = self._find_exe("npm")
             if node and npm:
-                self._log_line("Installing Node dependencies…")
-                self._run_cmd([npm, "install", "--silent"], cwd=FRONTEND)
-                self._log_line("Building React frontend…")
-                ok = self._run_cmd([npm, "run", "build"], cwd=FRONTEND)
+                self._log_line("Installing Node dependencies...")
+                self._run_cmd([npm, "install", "--prefer-offline"], cwd=FRONTEND)
+
+                self._log_line("Building React frontend...")
+                # Use 'npx vite build' — more reliable than 'npm run build'
+                # because it resolves vite from node_modules directly
+                npx = self._find_exe("npx")
+                if npx:
+                    ok = self._run_cmd([npx, "vite", "build"], cwd=FRONTEND)
+                else:
+                    # Fallback: call vite.cmd directly on Windows
+                    vite_cmd = FRONTEND / "node_modules" / ".bin" / "vite.cmd"
+                    vite_sh  = FRONTEND / "node_modules" / ".bin" / "vite"
+                    vite = str(vite_cmd) if vite_cmd.exists() else str(vite_sh)
+                    ok = self._run_cmd([vite, "build"], cwd=FRONTEND)
+
                 if ok and dist_index.exists():
                     self._log_line("Frontend built successfully.", "success")
                 else:
-                    self._log_line("Frontend build failed — UI may not load.", "warn")
+                    self._log_line("Frontend build failed -- UI may not load.", "warn")
             else:
-                self._log_line("Node.js not found — skipping frontend build.", "warn")
+                self._log_line("Node.js not found -- skipping frontend build.", "warn")
                 self._log_line("Get it from https://nodejs.org then re-run Install.", "warn")
 
         self._log_line("Install complete.", "success")
