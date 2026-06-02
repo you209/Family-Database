@@ -114,9 +114,22 @@ def get_person(person_id):
             "SELECT * FROM person_attributes WHERE person_id=?", (person_id,)
         ).fetchall())
 
-    person["events"]    = events
-    person["alt_names"] = alt_names
+        # Photos tagged with this person (via face_detections)
+        photos = rows_to_list(conn.execute("""
+            SELECT DISTINCT m.id, m.filename, m.path, m.date_text, m.date_year,
+                            m.description, fd.det_score AS confidence
+            FROM face_detections fd
+            JOIN media m ON m.id = fd.media_id
+            WHERE fd.person_id = ?
+            ORDER BY m.date_year ASC NULLS LAST, m.filename ASC
+        """, (person_id,)).fetchall())
+        for ph in photos:
+            ph["thumb_url"] = f"/thumbnails/{ph['path']}" if ph.get("path") else None
+
+    person["events"]     = events
+    person["alt_names"]  = alt_names
     person["attributes"] = attrs
+    person["photos"]     = photos
     return jsonify(person)
 
 
