@@ -277,17 +277,17 @@ class App(tk.Tk):
                 self._run_cmd([npm, "install", "--prefer-offline"], cwd=FRONTEND)
 
                 self._log_line("Building React frontend...")
-                # Use 'npx vite build' — more reliable than 'npm run build'
-                # because it resolves vite from node_modules directly
-                npx = self._find_exe("npx")
-                if npx:
-                    ok = self._run_cmd([npx, "vite", "build"], cwd=FRONTEND)
+                # Call vite from node_modules directly -- avoids npx
+                # downloading a different vite version than the project uses
+                vite_cmd = FRONTEND / "node_modules" / ".bin" / "vite.cmd"
+                vite_sh  = FRONTEND / "node_modules" / ".bin" / "vite"
+                if vite_cmd.exists():
+                    ok = self._run_cmd([str(vite_cmd), "build"], cwd=FRONTEND)
+                elif vite_sh.exists():
+                    ok = self._run_cmd([str(vite_sh), "build"], cwd=FRONTEND)
                 else:
-                    # Fallback: call vite.cmd directly on Windows
-                    vite_cmd = FRONTEND / "node_modules" / ".bin" / "vite.cmd"
-                    vite_sh  = FRONTEND / "node_modules" / ".bin" / "vite"
-                    vite = str(vite_cmd) if vite_cmd.exists() else str(vite_sh)
-                    ok = self._run_cmd([vite, "build"], cwd=FRONTEND)
+                    self._log_line("  vite not found in node_modules -- npm install may have failed", "error")
+                    ok = False
 
                 if ok and dist_index.exists():
                     self._log_line("Frontend built successfully.", "success")
