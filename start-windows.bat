@@ -120,17 +120,25 @@ if %BUILT_FRONTEND%==0 (
     if not errorlevel 1 (
         echo  Installing Node dependencies...
         pushd "%FRONTEND%"
-        call npm install --prefer-offline
+        call npm install
+        if errorlevel 1 (
+            echo  [ERROR] npm install failed - check output above.
+            popd
+            goto :start_server
+        )
         echo  Building React frontend...
-        :: Use npx vite build - more reliable than npm run build on Windows
-        call npx vite build
+        :: Call vite directly from node_modules - avoids npx version mismatch
+        if exist "node_modules\.bin\vite.cmd" (
+            call node_modules\.bin\vite.cmd build
+        ) else (
+            call node_modules\.bin\vite build
+        )
         popd
         if exist "%FRONTEND%\dist\index.html" (
             echo  [OK] Frontend built
             set BUILT_FRONTEND=1
         ) else (
             echo  [WARN] Frontend build failed - UI will not load.
-            echo  Try: cd frontend ^&^& npx vite build
         )
     ) else (
         echo  [WARN] Node.js not found - skipping frontend build.
@@ -138,6 +146,8 @@ if %BUILT_FRONTEND%==0 (
         echo         The REST API will still work without Node.
     )
 )
+
+:start_server
 
 :: Start Flask
 set PORT=5050
