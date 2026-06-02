@@ -1,0 +1,29 @@
+# FamilyRoot backend dependencies
+# Install: pip install -r requirements.txt
+
+# Web framework
+flask>=3.0
+flask-cors>=4.0
+
+# Image processing & EXIF
+pillow>=10.0
+exifread>=3.0
+opencv-python-headless>=4.8
+
+# AI / face recognition (local, no cloud)
+insightface>=0.7
+onnxruntime>=1.17          # CPU inference — use onnxruntime-gpu if you have a GPU
+
+# Face clustering & vector search
+numpy>=1.26
+scikit-learn>=1.4
+faiss-cpu>=1.7             # fast nearest-neighbour search for face embeddings
+
+# Gramps XML / GEDCOM parsing
+lxml>=5.0
+
+# Optional — photo enhancement (uncomment to install)
+# realesrgan                # 4x upscaling and denoising
+# gfpgan                    # face restoration
+# torch>=2.0                # required by realesrgan/gfpgan
+# torchvision
