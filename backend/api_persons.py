@@ -211,13 +211,46 @@ def timeline():
 
 # ── bubble board data ─────────────────────────────────────────────────────────
 
+# The three reserved group tag names used by the bubble board.
+GROUPS = ("family", "colleague", "friend")
+
+
+def _ensure_group_tags(conn):
+    """Create the three group tags if they don't exist yet."""
+    defaults = {
+        "family":    "#1D9E75",
+        "colleague": "#C0392B",
+        "friend":    "#2980B9",
+    }
+    for name, color in defaults.items():
+        conn.execute(
+            "INSERT OR IGNORE INTO tags (name, color) VALUES (?, ?)",
+            (name, color)
+        )
+
+
+def _get_person_group(conn, person_id: int) -> str | None:
+    """Return 'family' | 'colleague' | 'friend' | None for a person."""
+    row = conn.execute("""
+        SELECT t.name FROM object_tags ot
+        JOIN tags t ON t.id = ot.tag_id
+        WHERE ot.object_type = 'person'
+          AND ot.object_id   = ?
+          AND t.name IN ('family','colleague','friend')
+        LIMIT 1
+    """, (person_id,)).fetchone()
+    return row[0] if row else None
+
+
 @persons_bp.route("/api/persons/bubbles")
 def bubble_data():
     """
-    Returns every person with their photo count + family connections.
+    Returns every person with their photo count, group, and family connections.
     Used by the bubble board visualisation.
     """
     with get_db() as conn:
+        _ensure_group_tags(conn)
+
         people = rows_to_list(conn.execute("""
             SELECT
                 p.id, p.name_given, p.name_surname,
@@ -240,8 +273,10 @@ def bubble_data():
             GROUP BY f.id
         """).fetchall())
 
-        # Attach sample thumbnail path per person
+        # Attach group tag and thumbnail per person
         for p in people:
+            p["group"] = _get_person_group(conn, p["id"])
+
             mid = p.get("primary_media_id")
             if mid:
                 m = row_to_dict(
@@ -249,7 +284,6 @@ def bubble_data():
                 )
                 p["thumb_url"] = f"/thumbnails/{m['path']}" if m and m.get("path") else None
             else:
-                # Fall back to any photo they appear in
                 m = row_to_dict(conn.execute("""
                     SELECT m.path FROM face_detections fd
                     JOIN media m ON m.id = fd.media_id
@@ -264,3 +298,42 @@ def bubble_data():
         f["child_ids"] = [int(x) for x in raw.split(",") if x.strip().isdigit()]
 
     return jsonify({"people": people, "families": families})
+
+
+@persons_bp.route("/api/persons/<int:person_id>/group", methods=["POST"])
+def set_person_group(person_id):
+    """
+    Set or clear a person's bubble-board group.
+    Body: { "group": "family" | "colleague" | "friend" | null }
+    """
+    data  = request.get_json() or {}
+    group = data.get("group")  # None means clear
+
+    if group and group not in GROUPS:
+        return jsonify({"error": f"group must be one of {GROUPS}"}), 400
+
+    with get_db() as conn:
+        # Confirm person exists
+        if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+            abort(404)
+
+        _ensure_group_tags(conn)
+
+        # Remove any existing group tag for this person
+        conn.execute("""
+            DELETE FROM object_tags
+            WHERE object_type = 'person'
+              AND object_id   = ?
+              AND tag_id IN (SELECT id FROM tags WHERE name IN ('family','colleague','friend'))
+        """, (person_id,))
+
+        if group:
+            tag_id = conn.execute(
+                "SELECT id FROM tags WHERE name=?", (group,)
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT OR IGNORE INTO object_tags (tag_id, object_type, object_id) VALUES (?,?,?)",
+                (tag_id, "person", person_id)
+            )
+
+    return jsonify({"ok": True, "group": group})
