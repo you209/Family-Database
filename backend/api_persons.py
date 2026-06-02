@@ -350,3 +350,16 @@ def set_person_group(person_id):
             )
 
     return jsonify({"ok": True, "group": group})
+
+
+@persons_bp.route("/api/persons/<int:person_id>/tags")
+def get_person_tags(person_id):
+    with get_db() as conn:
+        if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+            abort(404)
+        rows = conn.execute("""
+            SELECT t.name FROM object_tags ot
+            JOIN tags t ON t.id = ot.tag_id
+            WHERE ot.object_type = 'person' AND ot.object_id = ?
+        """, (person_id,)).fetchall()
+    return jsonify({"tags": [r[0] for r in rows]})
