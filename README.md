@@ -7,21 +7,21 @@ A local-first family history database with Picasa-style photo management, AI fac
 ## Quick start
 
 ```bash
-# 1. Clone / unzip this project, then:
-cd familyroot
+# 1. Clone the repo
+git clone https://github.com/YOUR_USERNAME/familydatabase.git
+cd familydatabase
 
 # 2. Install Python dependencies
-pip install flask flask-cors pillow numpy scikit-learn exifread \
-            insightface onnxruntime faiss-cpu opencv-python-headless
+cd backend
+pip install -r requirements.txt
 
 # 3. Start the server
-cd backend
 python app.py
 
 # 4. Open http://localhost:5050
 ```
 
-That's it. The database is created automatically at `data/familyroot.db`.
+The database is created automatically at `data/familyroot.db`.
 
 ---
 
@@ -34,7 +34,7 @@ python photo_engine.py /path/to/your/photos
 
 This will:
 - Extract EXIF date, GPS coordinates, camera model
-- Guess the decade from the filename if EXIF is missing (e.g. `scan_1935_wedding.jpg`)
+- Guess the year from the filename if EXIF is missing (e.g. `scan_1935_wedding.jpg`)
 - Generate square thumbnails (400px)
 - Detect faces using InsightFace ArcFace
 - Cluster faces with DBSCAN so the same person is grouped across all photos
@@ -48,7 +48,7 @@ Then: python gramps_import.py yourfile.gramps
 ### From Ancestry.com:
 ```
 Ancestry → Settings → Download your data → Download
-Then: python gedcom_import.py yourfile.ged
+Then: python gramps_import.py yourfile.ged
 ```
 
 ---
@@ -84,7 +84,7 @@ curl -X POST http://localhost:5050/api/photos/recluster
 
 ## Editing metadata on old scans
 
-For scanned photos with no EXIF data, you can set metadata in the photo detail panel:
+For scanned photos with no EXIF data, set metadata in the photo detail panel:
 
 | Field | How to set |
 |---|---|
@@ -117,6 +117,23 @@ pip install realesrgan gfpgan
 
 ---
 
+## Gramps integration
+
+The **Gramps** tab lets you import and export your family tree data.
+
+Import a `.gramps` or `.ged` file via drag & drop or file path. All people, families, events, places, sources, citations, and media links are imported. You can re-import at any time — existing records are updated, not duplicated.
+
+Export back to Gramps XML or GEDCOM 5.5.1 at any time from the same tab.
+
+API endpoints:
+- `POST /api/gramps/import` — start import `{ "file_path": "..." }`
+- `GET  /api/gramps/import/status` — SSE stream of import progress
+- `GET  /api/gramps/stats` — summary counts for the Gramps tab UI
+- `GET  /api/gramps/export/gramps` — download as Gramps XML
+- `GET  /api/gramps/export/gedcom` — download as GEDCOM 5.5.1
+
+---
+
 ## Data model overview
 
 ```
@@ -136,16 +153,20 @@ All data lives in `data/familyroot.db` — a single SQLite file you can back up,
 ## Project structure
 
 ```
-familyroot/
+familydatabase/
 ├── backend/
-│   ├── app.py              ← Flask entry point (python app.py to run)
+│   ├── app.py              ← Flask entry point — python app.py to run
 │   ├── database.py         ← SQLite connection helpers
 │   ├── schema.sql          ← Full database schema (Gramps-aligned)
 │   ├── photo_engine.py     ← Ingestion, EXIF, face detection, clustering
 │   ├── api_photos.py       ← REST API: /api/photos/*, /api/faces/*
-│   ├── gramps_import.py    ← (Stage 2) Gramps XML importer
-│   └── gedcom_import.py    ← (Stage 2) GEDCOM importer
-├── frontend/               ← React app (Stage 2)
+│   ├── gramps_import.py    ← Gramps XML + GEDCOM importer + /api/gramps/* routes
+│   └── requirements.txt    ← pip install -r requirements.txt
+├── frontend/
+│   ├── src/pages/
+│   │   └── GrampsTab.jsx   ← Gramps integration tab (React)
+│   ├── package.json
+│   └── vite.config.js
 ├── media/
 │   ├── originals/          ← Full-res copies of your photos
 │   └── thumbnails/         ← 400px square thumbnails
@@ -155,10 +176,10 @@ familyroot/
 
 ---
 
-## What's coming (build order)
+## Build order
 
-- [x] **Stage 1** — Database schema + photo engine + face AI + REST API
-- [ ] **Stage 2** — Gramps XML + GEDCOM import/export
+- [x] **Stage 1** — Database schema, photo engine, face AI, REST API
+- [x] **Stage 2** — Gramps XML + GEDCOM import, Gramps integration tab
 - [ ] **Stage 3** — React frontend (photo grid, face naming UI, timeline)
 - [ ] **Stage 4** — Family tree visualisation (pedigree, descendant, fan chart)
 - [ ] **Stage 5** — Reports and printed family history books
