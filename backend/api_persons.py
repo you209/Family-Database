@@ -207,3 +207,60 @@ def timeline():
         "years":        years_list,
         "photo_counts": photo_counts,
     })
+
+
+# ── bubble board data ─────────────────────────────────────────────────────────
+
+@persons_bp.route("/api/persons/bubbles")
+def bubble_data():
+    """
+    Returns every person with their photo count + family connections.
+    Used by the bubble board visualisation.
+    """
+    with get_db() as conn:
+        people = rows_to_list(conn.execute("""
+            SELECT
+                p.id, p.name_given, p.name_surname,
+                p.gender, p.birth_year, p.death_year,
+                p.is_living, p.privacy,
+                p.primary_media_id,
+                COUNT(DISTINCT fd.media_id) AS photo_count
+            FROM persons p
+            LEFT JOIN face_detections fd ON fd.person_id = p.id
+            WHERE p.privacy = 0
+            GROUP BY p.id
+            ORDER BY photo_count DESC
+        """).fetchall())
+
+        families = rows_to_list(conn.execute("""
+            SELECT f.id, f.father_id, f.mother_id, f.rel_type,
+                   GROUP_CONCAT(fc.child_id) AS child_ids
+            FROM families f
+            LEFT JOIN family_children fc ON fc.family_id = f.id
+            GROUP BY f.id
+        """).fetchall())
+
+        # Attach sample thumbnail path per person
+        for p in people:
+            mid = p.get("primary_media_id")
+            if mid:
+                m = row_to_dict(
+                    conn.execute("SELECT path FROM media WHERE id=?", (mid,)).fetchone()
+                )
+                p["thumb_url"] = f"/thumbnails/{m['path']}" if m and m.get("path") else None
+            else:
+                # Fall back to any photo they appear in
+                m = row_to_dict(conn.execute("""
+                    SELECT m.path FROM face_detections fd
+                    JOIN media m ON m.id = fd.media_id
+                    WHERE fd.person_id = ? AND m.path IS NOT NULL
+                    LIMIT 1
+                """, (p["id"],)).fetchone())
+                p["thumb_url"] = f"/thumbnails/{m['path']}" if m and m.get("path") else None
+
+    # Parse child_ids from GROUP_CONCAT string
+    for f in families:
+        raw = f.get("child_ids") or ""
+        f["child_ids"] = [int(x) for x in raw.split(",") if x.strip().isdigit()]
+
+    return jsonify({"people": people, "families": families})

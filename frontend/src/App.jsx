@@ -4,11 +4,13 @@ import FacesTab    from "./pages/FacesTab.jsx";
 import TimelineTab from "./pages/TimelineTab.jsx";
 import GrampsTab   from "./pages/GrampsTab.jsx";
 import AdminTab    from "./pages/AdminTab.jsx";
+import BubbleTab   from "./pages/BubbleTab.jsx";
 
 const TABS = [
   { id: "photos",   label: "Photos"   },
   { id: "faces",    label: "Faces"    },
   { id: "timeline", label: "Timeline" },
+  { id: "bubbles",  label: "Family"   },
   { id: "gramps",   label: "Gramps"   },
   { id: "admin",    label: "Admin"    },
 ];
@@ -84,6 +86,7 @@ export default function App() {
         {tab === "photos"   && <PhotosTab />}
         {tab === "faces"    && <FacesTab />}
         {tab === "timeline" && <TimelineTab />}
+        {tab === "bubbles"  && <BubbleTab />}
         {tab === "gramps"   && <GrampsTab />}
         {tab === "admin"    && <AdminTab />}
       </main>
