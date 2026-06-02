@@ -224,11 +224,188 @@ function AddPersonCard({ onAdded }) {
 
 // ── person detail drawer ──────────────────────────────────────────────────────
 
+// ── life story renderer ───────────────────────────────────────────────────────
+
+function LifeStory({ personId }) {
+  const [story, setStory] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/persons/${personId}/story`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setStory(d))
+      .catch(() => {});
+  }, [personId]);
+
+  if (!story) return <div style={{ display: "flex", justifyContent: "center", marginTop: 40 }}><Spinner /></div>;
+
+  const p = story.person;
+  const name = [p.name_given, p.name_surname].filter(Boolean).join(" ") || "This person";
+  const born  = story.events.find(e => e.event_type === "Birth");
+  const died  = story.events.find(e => e.event_type === "Death");
+  const buried = story.events.find(e => e.event_type === "Burial");
+  const marriages = story.events.filter(e => e.event_type === "Marriage");
+  const occupations = story.attributes.filter(a => a.attr_type === "Occupation");
+  const otherEvents = story.events.filter(e =>
+    !["Birth","Death","Burial","Marriage"].includes(e.event_type)
+  );
+
+  function Para({ children, style }) {
+    return <p style={{ fontSize: 13, lineHeight: 1.75, color: "var(--text-secondary)", marginBottom: 14, ...style }}>{children}</p>;
+  }
+
+  function Hl({ children }) {
+    return <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{children}</span>;
+  }
+
+  function ordinal(n) {
+    if (!n) return "";
+    const s = ["th","st","nd","rd"];
+    const v = n % 100;
+    return n + (s[(v-20)%10] || s[v] || s[0]);
+  }
+
+  return (
+    <div>
+      {/* Birth paragraph */}
+      <Para>
+        <Hl>{name}</Hl>
+        {p.gender === "M" ? " was born" : p.gender === "F" ? " was born" : " was born"}
+        {born?.date_text ? <> on <Hl>{born.date_text}</Hl></> : born?.date_year ? <> in <Hl>{born.date_year}</Hl></> : ""}
+        {born?.place_name ? <> in <Hl>{born.place_name}</Hl></> : ""}.
+        {story.father || story.mother ? (
+          <>
+            {" "}{p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} was the
+            {story.birth_order ? <> {ordinal(story.birth_order)} child</> : " child"} of
+            {story.father ? <> <Hl>{story.father.name}</Hl></> : ""}
+            {story.father && story.mother ? " and" : ""}
+            {story.mother ? <> <Hl>{story.mother.name}</Hl></> : ""}.
+          </>
+        ) : ""}
+        {story.siblings.length > 0 && (
+          <> {p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} had {story.siblings.length} sibling{story.siblings.length > 1 ? "s" : ""}
+          {story.siblings.length <= 3
+            ? <>: {story.siblings.map((s, i) => <span key={s.id}>{i > 0 ? ", " : ""}<Hl>{s.name}</Hl></span>)}</>
+            : <>: <Hl>{story.siblings[0].name}</Hl>, <Hl>{story.siblings[1].name}</Hl> and {story.siblings.length - 2} others</>
+          }.</>
+        )}
+      </Para>
+
+      {/* Occupation */}
+      {occupations.length > 0 && (
+        <Para>
+          {p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} worked as
+          {occupations.map((o, i) => (
+            <span key={i}>{i === 0 ? " " : i === occupations.length - 1 ? " and " : ", "}<Hl>{o.value}</Hl></span>
+          ))}{occupations[0].date_text ? <> from <Hl>{occupations[0].date_text}</Hl></> : ""}.
+        </Para>
+      )}
+
+      {/* Marriages */}
+      {marriages.length > 0 && (
+        <Para>
+          {p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} married
+          {story.own_families.map((f, i) => (
+            f.spouse ? (
+              <span key={i}>
+                {i > 0 ? " and later " : " "}
+                <Hl>{f.spouse.name}</Hl>
+              </span>
+            ) : null
+          ))}
+          {marriages[0].date_text ? <> on <Hl>{marriages[0].date_text}</Hl></> : marriages[0].date_year ? <> in <Hl>{marriages[0].date_year}</Hl></> : ""}
+          {marriages[0].place_name ? <> in <Hl>{marriages[0].place_name}</Hl></> : ""}.
+        </Para>
+      )}
+
+      {/* Children */}
+      {story.own_families.some(f => f.children.length > 0) && (
+        <Para>
+          {(() => {
+            const allKids = story.own_families.flatMap(f => f.children);
+            return <>
+              {p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} had <Hl>{allKids.length}</Hl> child{allKids.length !== 1 ? "ren" : ""}
+              {allKids.length <= 4
+                ? <>: {allKids.map((k, i) => <span key={k.id}>{i > 0 ? ", " : ""}<Hl>{k.name}</Hl>{k.birth_year ? ` (b. ${k.birth_year})` : ""}</span>)}</>
+                : <>, including <Hl>{allKids[0].name}</Hl> and <Hl>{allKids[1].name}</Hl></>
+              }.
+            </>;
+          })()}
+        </Para>
+      )}
+
+      {/* Other key events */}
+      {otherEvents.length > 0 && (
+        <Para>
+          Other notable events in {p.gender === "F" ? "her" : p.gender === "M" ? "his" : "their"} life included
+          {otherEvents.slice(0, 5).map((e, i) => (
+            <span key={i}>
+              {i === 0 ? " " : i === Math.min(otherEvents.length, 5) - 1 ? " and " : ", "}
+              <Hl>{e.event_type.toLowerCase()}</Hl>
+              {e.date_text ? <> ({e.date_text})</> : e.date_year ? <> ({e.date_year})</> : ""}
+              {e.place_name ? <> in {e.place_name}</> : ""}
+            </span>
+          ))}.
+        </Para>
+      )}
+
+      {/* Death */}
+      {died && (
+        <Para>
+          {p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} died
+          {died.date_text ? <> on <Hl>{died.date_text}</Hl></> : died.date_year ? <> in <Hl>{died.date_year}</Hl></> : ""}
+          {died.place_name ? <> in <Hl>{died.place_name}</Hl></> : ""}
+          {died.description ? <>, {died.description}</> : ""}.
+          {buried ? <> {p.gender === "F" ? "She" : p.gender === "M" ? "He" : "They"} was buried{buried.place_name ? <> at <Hl>{buried.place_name}</Hl></> : ""}.</> : ""}
+        </Para>
+      )}
+
+      {!born && !died && story.events.length === 0 && (
+        <Para style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}>
+          No life events recorded yet for this person.
+        </Para>
+      )}
+
+      {/* Event timeline at the bottom */}
+      {story.events.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", color: "var(--text-tertiary)", textTransform: "uppercase", marginBottom: 12 }}>
+            Timeline
+          </div>
+          <div style={{ position: "relative", paddingLeft: 20 }}>
+            <div style={{ position: "absolute", left: 6, top: 6, bottom: 6, width: 1, background: "var(--border)" }} />
+            {story.events.map((e, i) => (
+              <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12, position: "relative" }}>
+                <div style={{
+                  position: "absolute", left: -20, top: 4,
+                  width: 7, height: 7, borderRadius: "50%",
+                  background: "var(--accent)", border: "2px solid var(--bg-sidebar)",
+                }} />
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", minWidth: 36 }}>
+                  {e.date_year || "—"}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 500 }}>{e.event_type}</div>
+                  {e.place_name && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{e.place_name}</div>}
+                  {e.description && <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{e.description}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── person drawer ─────────────────────────────────────────────────────────────
+
 function PersonDrawer({ person, onClose }) {
-  const [detail, setDetail] = useState(null);
+  const [detail, setDetail]       = useState(null);
+  const [drawerTab, setDrawerTab] = useState("story");
 
   useEffect(() => {
     if (!person) return;
+    setDrawerTab("story");
     fetch(`${API}/api/persons/${person.id}`)
       .then(r => r.json())
       .then(setDetail)
@@ -286,72 +463,81 @@ function PersonDrawer({ person, onClose }) {
           </div>
         </div>
 
+        {/* Drawer tabs */}
+        <div style={{ display: "flex", gap: 2, padding: "0 24px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          {["story", "events", "photos"].map(t => (
+            <button
+              key={t}
+              onClick={() => setDrawerTab(t)}
+              style={{
+                background: "none", border: "none",
+                borderBottom: `2px solid ${drawerTab === t ? "var(--accent)" : "transparent"}`,
+                padding: "10px 12px",
+                fontSize: 12, fontWeight: drawerTab === t ? 500 : 400,
+                color: drawerTab === t ? "var(--text-primary)" : "var(--text-secondary)",
+                cursor: "pointer",
+                marginBottom: -1,
+                textTransform: "capitalize",
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-          {!detail && (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 40 }}><Spinner /></div>
+
+          {drawerTab === "story" && (
+            <LifeStory personId={person.id} />
           )}
 
-          {detail && (
-            <>
-              {/* Events */}
-              {detail.events?.length > 0 && (
-                <Section title="Life events">
-                  {detail.events.map(e => (
-                    <div key={e.event_id} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-                      <div style={{
-                        fontSize: 10, fontWeight: 600, padding: "2px 7px",
-                        borderRadius: 5, background: "var(--bg-tag)",
-                        color: "var(--text-secondary)", flexShrink: 0, marginTop: 1,
-                      }}>
-                        {e.event_type}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 13 }}>{e.date_text || e.date_year || "—"}</div>
-                        {e.place_name && <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{e.place_name}</div>}
-                      </div>
+          {drawerTab === "events" && (
+            !detail ? (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 40 }}><Spinner /></div>
+            ) : detail.events?.length > 0 ? (
+              <Section title="Life events">
+                {detail.events.map(e => (
+                  <div key={e.event_id} style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
+                    <div style={{
+                      fontSize: 10, fontWeight: 600, padding: "2px 7px",
+                      borderRadius: 5, background: "var(--bg-tag)",
+                      color: "var(--text-secondary)", flexShrink: 0, marginTop: 1,
+                    }}>
+                      {e.event_type}
                     </div>
-                  ))}
-                </Section>
-              )}
-
-              {/* Photos */}
-              {detail.photos?.length > 0 && (
-                <Section title={`Photos (${detail.photos.length})`}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                    {detail.photos.slice(0, 9).map(p => (
-                      <div key={p.id} style={{
-                        aspectRatio: "1", borderRadius: 6, overflow: "hidden",
-                        background: "var(--bg-card)",
-                      }}>
-                        {p.thumb_url
-                          ? <img src={p.thumb_url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                          : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🖼</div>
-                        }
-                      </div>
-                    ))}
+                    <div>
+                      <div style={{ fontSize: 13 }}>{e.date_text || e.date_year || "—"}</div>
+                      {e.place_name && <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{e.place_name}</div>}
+                    </div>
                   </div>
-                </Section>
-              )}
+                ))}
+              </Section>
+            ) : (
+              <div style={{ textAlign: "center", color: "var(--text-tertiary)", marginTop: 40, fontSize: 13 }}>No events recorded.</div>
+            )
+          )}
 
-              {/* Attributes */}
-              {detail.attributes?.length > 0 && (
-                <Section title="Attributes">
-                  {detail.attributes.map((a, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 13 }}>
-                      <span style={{ color: "var(--text-secondary)", minWidth: 90 }}>{a.attr_type}</span>
-                      <span>{a.value}</span>
+          {drawerTab === "photos" && (
+            !detail ? (
+              <div style={{ display: "flex", justifyContent: "center", marginTop: 40 }}><Spinner /></div>
+            ) : detail.photos?.length > 0 ? (
+              <Section title={`Photos (${detail.photos.length})`}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                  {detail.photos.map(p => (
+                    <div key={p.id} style={{ aspectRatio: "1", borderRadius: 6, overflow: "hidden", background: "var(--bg-card)" }}>
+                      {p.thumb_url
+                        ? <img src={p.thumb_url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                        : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🖼</div>
+                      }
                     </div>
                   ))}
-                </Section>
-              )}
-
-              {detail.events?.length === 0 && detail.photos?.length === 0 && (
-                <div style={{ textAlign: "center", color: "var(--text-tertiary)", marginTop: 40, fontSize: 13 }}>
-                  No records yet for this person.
                 </div>
-              )}
-            </>
+              </Section>
+            ) : (
+              <div style={{ textAlign: "center", color: "var(--text-tertiary)", marginTop: 40, fontSize: 13 }}>No photos linked.</div>
+            )
           )}
+
         </div>
       </div>
     </>

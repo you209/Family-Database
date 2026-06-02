@@ -5,6 +5,7 @@ import FacesTab    from "./pages/FacesTab.jsx";
 import TimelineTab from "./pages/TimelineTab.jsx";
 import BubbleTab   from "./pages/BubbleTab.jsx";
 import MapTab      from "./pages/MapTab.jsx";
+import TreeTab     from "./pages/TreeTab.jsx";
 import GrampsTab   from "./pages/GrampsTab.jsx";
 import AdminTab    from "./pages/AdminTab.jsx";
 
@@ -17,6 +18,7 @@ const NAV = [
     section: "PEOPLE",
     items: [
       { id: "people",    label: "All people",     icon: "👥" },
+      { id: "tree",      label: "Family tree",    icon: "🌳" },
       { id: "bubbles",   label: "Relationships",  icon: "🫧" },
     ],
   },
@@ -145,6 +147,7 @@ export default function App() {
 
       <main style={{ flex: 1, display: "flex", overflow: "hidden", background: "var(--bg-app)" }}>
         {page === "people"    && <PeopleTab   onNav={setPage} />}
+        {page === "tree"      && <TreeTab     />}
         {page === "bubbles"   && <BubbleTab   />}
         {page === "timeline"  && <TimelineTab />}
         {page === "map"       && <MapTab      />}
