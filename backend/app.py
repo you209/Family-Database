@@ -15,6 +15,10 @@ from flask_cors import CORS
 
 from database import init_db, DB_PATH
 from api_photos import photos_bp
+from api_persons import persons_bp
+from api_admin import admin_bp
+from api_map import map_bp
+from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder="../frontend/dist", static_url_path="")
@@ -25,6 +29,10 @@ init_db(DB_PATH)
 
 # ── Register blueprints ───────────────────────────────────────────────────────
 app.register_blueprint(photos_bp)
+app.register_blueprint(persons_bp)
+app.register_blueprint(admin_bp)
+app.register_blueprint(map_bp)
+register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────
 @app.route("/", defaults={"path": ""})
@@ -52,7 +60,7 @@ def health():
     return jsonify({"status": "ok", "db": db_ok, "version": "0.1.0"})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5050))
-    debug = os.environ.get("DEBUG", "1") == "1"
+    port  = int(os.environ.get("PORT", 5050))
+    debug = os.environ.get("DEBUG", "0") == "1"
     print(f"\n  FamilyRoot running at http://localhost:{port}\n")
     app.run(host="0.0.0.0", port=port, debug=debug)

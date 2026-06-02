@@ -1,0 +1,373 @@
+"""
+FamilyRoot — api_admin.py
+
+Flask Blueprint: /api/admin/*
+
+Routes:
+  GET  /api/admin/tree              folder tree of media/originals
+  POST /api/admin/reorganize        move + rename all media into year/event/place folders
+  GET  /api/admin/reorganize/status SSE stream of reorganize progress
+  POST /api/admin/ingest            { folder_path, run_faces } — ingest from any path
+  GET  /api/admin/ingest/status     SSE stream (delegates to photo_engine)
+
+Folder structure produced by reorganize:
+  media/
+    originals/
+      1935/
+        Marriage - John and Mary Smith/
+          1935-06-12-001.jpg
+        London/
+          1935-00-00-001.jpg
+        unsorted/
+          1935-00-00-001.jpg
+      undated/
+        unsorted/
+          0000-00-00-001.jpg
+    thumbnails/   (mirrors originals tree)
+
+File naming: YYYY-MM-DD-NNN.ext
+  NNN = 3-digit sequence within the folder, zero-padded
+"""
+
+import json
+import os
+import re
+import shutil
+import threading
+from pathlib import Path
+
+from flask import Blueprint, Response, jsonify, request
+from database import get_db, rows_to_list, row_to_dict
+
+admin_bp = Blueprint("admin", __name__)
+
+MEDIA_ROOT = Path(os.environ.get("FAMILYROOT_MEDIA", "media"))
+ORIGINALS  = MEDIA_ROOT / "originals"
+THUMBS     = MEDIA_ROOT / "thumbnails"
+
+# ── shared SSE state ──────────────────────────────────────────────────────────
+
+_reorg_status  = {"running": False, "log": [], "done": False, "stats": {}}
+_ingest_status = {"running": False, "current": 0, "total": 0, "filename": "", "stats": {}}
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _safe_name(s: str) -> str:
+    """Strip filesystem-unsafe characters; collapse whitespace."""
+    s = re.sub(r'[\\/:*?"<>|]', "", s or "")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:80] or "unnamed"
+
+
+def _date_prefix(year, month, day) -> str:
+    y = str(year).zfill(4) if year else "0000"
+    m = str(month).zfill(2) if month else "00"
+    d = str(day).zfill(2) if day else "00"
+    return f"{y}-{m}-{d}"
+
+
+def _target_subfolder(media_id: int, conn) -> tuple[str, str]:
+    """
+    Return (year_bucket, event_or_place_subfolder) for a media row.
+    Priority: event linked directly to media → person's primary event
+              → media.place_id → 'unsorted'
+    """
+    row = row_to_dict(
+        conn.execute(
+            "SELECT date_year, date_month, date_day, place_id FROM media WHERE id=?",
+            (media_id,)
+        ).fetchone()
+    )
+    if not row:
+        return ("undated", "unsorted")
+
+    year  = row.get("date_year")
+    year_bucket = str(year) if year else "undated"
+
+    # 1. Event directly linked to this media object
+    ev = row_to_dict(conn.execute("""
+        SELECT e.event_type, e.description, pl.name AS place_name
+        FROM event_media em
+        JOIN events e  ON e.id  = em.event_id
+        LEFT JOIN places pl ON pl.id = e.place_id
+        WHERE em.media_id = ?
+        ORDER BY e.date_sort ASC NULLS LAST
+        LIMIT 1
+    """, (media_id,)).fetchone())
+
+    if ev:
+        parts = [ev["event_type"]]
+        if ev["description"]:
+            parts.append(ev["description"])
+        elif ev["place_name"]:
+            parts.append(ev["place_name"])
+        return (year_bucket, _safe_name(" - ".join(parts)))
+
+    # 2. Event linked via a person who appears in this media
+    ev2 = row_to_dict(conn.execute("""
+        SELECT e.event_type, e.description,
+               p.name_given, p.name_surname,
+               pl.name AS place_name
+        FROM person_media pm
+        JOIN person_events pe ON pe.person_id = pm.person_id AND pe.role = 'Primary'
+        JOIN events e  ON e.id  = pe.event_id
+        LEFT JOIN persons p  ON p.id  = pm.person_id
+        LEFT JOIN places pl ON pl.id = e.place_id
+        WHERE pm.media_id = ?
+        ORDER BY e.date_sort ASC NULLS LAST
+        LIMIT 1
+    """, (media_id,)).fetchone())
+
+    if ev2:
+        name = " ".join(filter(None, [ev2["name_given"], ev2["name_surname"]]))
+        parts = [ev2["event_type"]]
+        if name:
+            parts.append(name)
+        elif ev2["place_name"]:
+            parts.append(ev2["place_name"])
+        return (year_bucket, _safe_name(" - ".join(parts)))
+
+    # 3. Place attached to this media row
+    place_id = row.get("place_id")
+    if place_id:
+        pl = row_to_dict(conn.execute(
+            "SELECT name FROM places WHERE id=?", (place_id,)
+        ).fetchone())
+        if pl and pl.get("name"):
+            return (year_bucket, _safe_name(pl["name"]))
+
+    # 4. Fallback
+    return (year_bucket, "unsorted")
+
+
+# ── folder tree ───────────────────────────────────────────────────────────────
+
+def _build_tree(path: Path, rel: Path = None) -> dict:
+    if rel is None:
+        rel = path
+    node = {
+        "name":     path.name,
+        "path":     str(path.relative_to(rel)),
+        "children": [],
+        "files":    0,
+    }
+    try:
+        items = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name))
+        for item in items:
+            if item.is_dir():
+                child = _build_tree(item, rel)
+                node["children"].append(child)
+                node["files"] += child["files"]
+            elif item.is_file() and item.suffix.lower() in {
+                ".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff",
+                ".bmp", ".webp", ".heic", ".heif",
+            }:
+                node["files"] += 1
+    except PermissionError:
+        pass
+    return node
+
+
+@admin_bp.route("/api/admin/tree")
+def folder_tree():
+    if not ORIGINALS.exists():
+        return jsonify({"name": "originals", "path": "", "children": [], "files": 0})
+    tree = _build_tree(ORIGINALS, ORIGINALS.parent)
+    return jsonify(tree)
+
+
+# ── reorganize ────────────────────────────────────────────────────────────────
+
+@admin_bp.route("/api/admin/reorganize", methods=["POST"])
+def start_reorganize():
+    if _reorg_status["running"]:
+        return jsonify({"error": "Reorganize already running"}), 409
+
+    dry_run = request.get_json(silent=True, force=True) or {}
+    dry_run = bool(dry_run.get("dry_run", False))
+
+    def _run():
+        _reorg_status.update({"running": True, "log": [], "done": False, "stats": {}})
+        log   = _reorg_status["log"]
+        stats = {"moved": 0, "renamed": 0, "skipped": 0, "errors": 0}
+
+        def emit(msg):
+            log.append(msg)
+
+        try:
+            with get_db() as conn:
+                media_rows = rows_to_list(conn.execute(
+                    "SELECT id, filename, path, date_year, date_month, date_day FROM media"
+                ).fetchall())
+
+            emit(f"Found {len(media_rows)} media items to process…")
+
+            # Track sequence numbers per target folder
+            seq_by_folder: dict[str, int] = {}
+
+            for row in media_rows:
+                media_id = row["id"]
+                old_rel  = row.get("path") or ""
+                filename = row["filename"] or ""
+                suffix   = Path(filename).suffix.lower() or ".jpg"
+
+                with get_db() as conn:
+                    year_bucket, subfolder = _target_subfolder(media_id, conn)
+
+                # Build target folder path
+                target_dir_rel = Path(year_bucket) / subfolder
+                folder_key     = str(target_dir_rel)
+
+                seq_by_folder.setdefault(folder_key, 0)
+                seq_by_folder[folder_key] += 1
+                seq = seq_by_folder[folder_key]
+
+                date_prefix = _date_prefix(
+                    row.get("date_year"),
+                    row.get("date_month"),
+                    row.get("date_day"),
+                )
+                new_filename = f"{date_prefix}-{seq:03d}{suffix}"
+                new_rel      = str(target_dir_rel / new_filename)
+
+                # Already in the right place?
+                if old_rel == new_rel:
+                    stats["skipped"] += 1
+                    continue
+
+                old_orig  = ORIGINALS / old_rel
+                new_orig  = ORIGINALS / new_rel
+                old_thumb = THUMBS    / old_rel
+                new_thumb = THUMBS    / new_rel
+
+                if old_rel and not old_orig.exists():
+                    emit(f"  MISSING  {old_rel}")
+                    stats["errors"] += 1
+                    continue
+
+                emit(f"  {'DRY' if dry_run else 'MOVE'}  {old_rel or '(no path)'}  →  {new_rel}")
+
+                if not dry_run:
+                    try:
+                        new_orig.parent.mkdir(parents=True, exist_ok=True)
+                        if old_rel:
+                            shutil.move(str(old_orig), str(new_orig))
+                        # Move thumbnail if it exists
+                        if old_thumb.exists():
+                            new_thumb.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.move(str(old_thumb), str(new_thumb))
+                        # Update DB
+                        with get_db() as conn:
+                            conn.execute(
+                                "UPDATE media SET path=?, filename=?, updated_at=datetime('now') WHERE id=?",
+                                (new_rel, new_filename, media_id)
+                            )
+                        stats["moved"]   += (1 if old_rel else 0)
+                        stats["renamed"] += 1
+                    except Exception as e:
+                        emit(f"    ERROR: {e}")
+                        stats["errors"] += 1
+                else:
+                    stats["renamed"] += 1
+
+            emit("")
+            emit(f"Done. Moved: {stats['moved']}  Renamed: {stats['renamed']}  "
+                 f"Skipped: {stats['skipped']}  Errors: {stats['errors']}")
+
+        except Exception as e:
+            emit(f"Fatal error: {e}")
+            stats["errors"] += 1
+        finally:
+            _reorg_status["running"] = False
+            _reorg_status["done"]    = True
+            _reorg_status["stats"]   = stats
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "dry_run": dry_run})
+
+
+@admin_bp.route("/api/admin/reorganize/status")
+def reorg_status_stream():
+    def generate():
+        import time
+        sent = 0
+        while _reorg_status["running"] or sent < len(_reorg_status["log"]):
+            lines = _reorg_status["log"]
+            while sent < len(lines):
+                payload = json.dumps({"message": lines[sent]})
+                yield f"data: {payload}\n\n"
+                sent += 1
+            if not _reorg_status["running"]:
+                break
+            time.sleep(0.2)
+        final = json.dumps({"done": True, "stats": _reorg_status.get("stats", {})})
+        yield f"data: {final}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+# ── ingest from folder ────────────────────────────────────────────────────────
+
+@admin_bp.route("/api/admin/ingest", methods=["POST"])
+def admin_ingest():
+    """Kick off photo ingestion from any folder path on the server."""
+    if _ingest_status["running"]:
+        return jsonify({"error": "Ingestion already running"}), 409
+
+    data = request.get_json(silent=True) or {}
+    folder = data.get("folder_path", "").strip()
+    if not folder or not Path(folder).is_dir():
+        return jsonify({"error": f"Not a directory: {folder!r}"}), 400
+
+    run_faces = bool(data.get("run_faces", True))
+
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from photo_engine import ingest_folder, cluster_faces
+
+    def _run():
+        _ingest_status.update({"running": True, "current": 0, "total": 0,
+                                "filename": "Starting…", "stats": {}})
+
+        def cb(cur, tot, name):
+            _ingest_status["current"]  = cur
+            _ingest_status["total"]    = tot
+            _ingest_status["filename"] = name
+
+        try:
+            from database import DB_PATH
+            stats = ingest_folder(Path(folder), DB_PATH, MEDIA_ROOT,
+                                  run_faces=run_faces, progress_cb=cb)
+            _ingest_status["stats"] = stats
+            if run_faces:
+                _ingest_status["filename"] = "Clustering faces…"
+                clusters = cluster_faces(DB_PATH)
+                _ingest_status["stats"]["clusters_found"] = len(clusters)
+        finally:
+            _ingest_status["running"]  = False
+            _ingest_status["filename"] = "Complete"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@admin_bp.route("/api/admin/ingest/status")
+def admin_ingest_status():
+    def generate():
+        import time
+        while _ingest_status["running"]:
+            payload = json.dumps({
+                "current":  _ingest_status["current"],
+                "total":    _ingest_status["total"],
+                "filename": _ingest_status["filename"],
+                "pct": round(
+                    _ingest_status["current"] / max(_ingest_status["total"], 1) * 100
+                ),
+            })
+            yield f"data: {payload}\n\n"
+            time.sleep(0.5)
+        final = json.dumps({"done": True, "stats": _ingest_status["stats"]})
+        yield f"data: {final}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")

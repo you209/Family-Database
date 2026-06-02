@@ -180,7 +180,7 @@ familydatabase/
 
 - [x] **Stage 1** — Database schema, photo engine, face AI, REST API
 - [x] **Stage 2** — Gramps XML + GEDCOM import, Gramps integration tab
-- [ ] **Stage 3** — React frontend (photo grid, face naming UI, timeline)
+- [x] **Stage 3** — React frontend (photo grid, face naming UI, timeline)
 - [ ] **Stage 4** — Family tree visualisation (pedigree, descendant, fan chart)
 - [ ] **Stage 5** — Reports and printed family history books
 
