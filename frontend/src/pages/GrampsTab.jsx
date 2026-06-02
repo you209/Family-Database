@@ -1,77 +1,174 @@
 /**
- * FamilyRoot — GrampsTab.jsx
+ * FamilyRoot — GrampsTab / Import page
  *
- * The Gramps integration tab. Covers:
- *   - Import a .gramps or .ged file (drag & drop or file picker)
- *   - Live SSE progress stream during import
- *   - Database stats summary post-import
- *   - Export back to Gramps XML / GEDCOM
- *   - Sync status (what's in FamilyRoot vs what was in the Gramps file)
+ * Flow:
+ *   1. User types (or pastes) a folder path — USB drive, network share, local folder
+ *   2. "Scan" hits /api/gramps/scan and lists found .gramps/.ged files + photo count
+ *   3. User picks the genealogy file they want and clicks Import
+ *   4. Optionally also ingest the photos from the same folder
+ *   5. Live SSE progress log during import/ingest
+ *   6. DB stats summary and export buttons at the bottom
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
-const API = "http://localhost:5050";
+const API = "";
 
-// ── tiny helpers ──────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub, color }) {
-  const colors = {
-    blue:   { bg: "#E6F1FB", text: "#0C447C" },
-    teal:   { bg: "#E1F5EE", text: "#085041" },
-    amber:  { bg: "#FAEEDA", text: "#633806" },
-    coral:  { bg: "#FAECE7", text: "#712B13" },
-    purple: { bg: "#EEEDFE", text: "#3C3489" },
-    gray:   { bg: "#F1EFE8", text: "#444441" },
-  };
-  const c = colors[color] || colors.gray;
+function fmtSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function SectionHeader({ children }) {
   return (
     <div style={{
-      background: c.bg, borderRadius: 8, padding: "12px 14px",
-      minWidth: 0,
+      fontSize: 10, fontWeight: 600, letterSpacing: "0.1em",
+      color: "var(--text-tertiary)", textTransform: "uppercase",
+      marginBottom: 10,
     }}>
-      <div style={{ fontSize: 11, color: c.text, opacity: 0.7, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 500, color: c.text, lineHeight: 1 }}>{value ?? "—"}</div>
-      {sub && <div style={{ fontSize: 11, color: c.text, opacity: 0.6, marginTop: 4 }}>{sub}</div>}
+      {children}
     </div>
   );
 }
 
-function ProgressBar({ pct, color = "#1D9E75" }) {
+function Card({ children, style }) {
   return (
-    <div style={{ height: 5, background: "var(--color-background-tertiary)", borderRadius: 3, overflow: "hidden" }}>
-      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.3s" }} />
+    <div style={{
+      background: "var(--bg-card)",
+      border: "1px solid var(--border-card)",
+      borderRadius: 10,
+      ...style,
+    }}>
+      {children}
     </div>
   );
 }
 
-// ── main component ────────────────────────────────────────────────────────────
+function CardRow({ label, children }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "10px 14px",
+      borderBottom: "1px solid var(--border)",
+    }}>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 90 }}>{label}</div>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+}
+
+function StatBadge({ label, value, accent }) {
+  return (
+    <div style={{
+      background: "var(--bg-input)", borderRadius: 8,
+      padding: "10px 14px", textAlign: "center",
+    }}>
+      <div style={{ fontSize: 20, fontWeight: 600, color: accent || "var(--text-primary)" }}>
+        {(value ?? 0).toLocaleString()}
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>{label}</div>
+    </div>
+  );
+}
+
+function LogBox({ lines, running, logRef }) {
+  return (
+    <div
+      ref={logRef}
+      style={{
+        background: "#0D0D0D",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "10px 14px",
+        fontFamily: "var(--mono, monospace)",
+        fontSize: 11,
+        lineHeight: 1.8,
+        maxHeight: 200,
+        overflowY: "auto",
+        color: "var(--text-secondary)",
+      }}
+    >
+      {lines.map((msg, i) => (
+        <div key={i} style={{ color: msg.startsWith("✓") ? "var(--accent)" : msg.startsWith("✗") || msg.toLowerCase().includes("error") ? "#E07070" : "var(--text-secondary)" }}>
+          {msg}
+        </div>
+      ))}
+      {running && <div style={{ color: "var(--accent)" }}>▌</div>}
+      {lines.length === 0 && !running && (
+        <div style={{ color: "var(--text-tertiary)" }}>No output yet.</div>
+      )}
+    </div>
+  );
+}
+
+// ── main ──────────────────────────────────────────────────────────────────────
 
 export default function GrampsTab() {
-  const [stats, setStats] = useState(null);
-  const [importing, setImporting] = useState(false);
-  const [importLog, setImportLog] = useState([]);
-  const [importDone, setImportDone] = useState(false);
-  const [importStats, setImportStats] = useState(null);
-  const [dragOver, setDragOver] = useState(false);
-  const [filePath, setFilePath] = useState("");
-  const [fileMode, setFileMode] = useState("path"); // "path" | "drop"
-  const fileRef = useRef(null);
-  const logRef = useRef(null);
-  const esRef = useRef(null);
+  // scan
+  const [scanPath,    setScanPath]    = useState("");
+  const [scanning,    setScanning]    = useState(false);
+  const [scanResult,  setScanResult]  = useState(null); // { ged_files, photo_count }
+  const [scanError,   setScanError]   = useState(null);
 
-  // Load DB stats on mount
+  // genealogy import
+  const [selectedFile, setSelectedFile] = useState(null); // path string
+  const [importing,    setImporting]    = useState(false);
+  const [importLog,    setImportLog]    = useState([]);
+  const [importDone,   setImportDone]   = useState(false);
+  const [importStats,  setImportStats]  = useState(null);
+
+  // photo ingest (from same folder)
+  const [ingestPhotos, setIngestPhotos] = useState(true);
+  const [ingesting,    setIngesting]    = useState(false);
+  const [ingestLog,    setIngestLog]    = useState([]);
+  const [ingestDone,   setIngestDone]   = useState(false);
+
+  // db stats
+  const [dbStats, setDbStats] = useState(null);
+
+  // drag-drop direct file
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef(null);
+
+  const importLogRef = useRef(null);
+  const ingestLogRef = useRef(null);
+
+  // auto-scroll logs
+  useEffect(() => { if (importLogRef.current) importLogRef.current.scrollTop = importLogRef.current.scrollHeight; }, [importLog]);
+  useEffect(() => { if (ingestLogRef.current) ingestLogRef.current.scrollTop = ingestLogRef.current.scrollHeight; }, [ingestLog]);
+
+  // load db stats on mount and after import
   useEffect(() => {
     fetch(`${API}/api/gramps/stats`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => d && setStats(d))
+      .then(d => d && setDbStats(d))
       .catch(() => {});
-  }, [importDone]);
+  }, [importDone, ingestDone]);
 
-  // Auto-scroll log
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [importLog]);
+  // ── scan folder ────────────────────────────────────────────────────────────
+
+  const handleScan = async () => {
+    if (!scanPath.trim()) return;
+    setScanning(true);
+    setScanError(null);
+    setScanResult(null);
+    setSelectedFile(null);
+    try {
+      const r = await fetch(`${API}/api/gramps/scan?path=${encodeURIComponent(scanPath.trim())}`);
+      const d = await r.json();
+      if (!r.ok) { setScanError(d.error || "Scan failed"); }
+      else { setScanResult(d); }
+    } catch (e) {
+      setScanError(e.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  // ── import genealogy file ─────────────────────────────────────────────────
 
   const startImport = useCallback(async (path) => {
     if (importing) return;
@@ -88,15 +185,11 @@ export default function GrampsTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        setImportLog([`Error: ${err.error}`]);
+        setImportLog([`✗ Error: ${err.error}`]);
         setImporting(false);
         return;
       }
-
-      // Subscribe to SSE progress
       const es = new EventSource(`${API}/api/gramps/import/status`);
-      esRef.current = es;
-
       es.onmessage = (e) => {
         const data = JSON.parse(e.data);
         if (data.done) {
@@ -108,210 +201,334 @@ export default function GrampsTab() {
           setImportLog(prev => [...prev, data.message]);
         }
       };
-      es.onerror = () => {
-        setImporting(false);
-        es.close();
-      };
+      es.onerror = () => { setImporting(false); es.close(); };
     } catch (e) {
-      setImportLog([`Connection error: ${e.message}`]);
+      setImportLog([`✗ Connection error: ${e.message}`]);
       setImporting(false);
     }
   }, [importing]);
 
+  // ── ingest photos ─────────────────────────────────────────────────────────
+
+  const startIngest = useCallback(async (folderPath) => {
+    if (ingesting) return;
+    setIngesting(true);
+    setIngestLog([]);
+    setIngestDone(false);
+
+    try {
+      const res = await fetch(`${API}/api/admin/ingest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder_path: folderPath, run_faces: false }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        setIngestLog([`✗ ${err.error}`]);
+        setIngesting(false);
+        return;
+      }
+      const es = new EventSource(`${API}/api/admin/ingest/status`);
+      es.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.done) {
+          setIngestDone(true);
+          setIngesting(false);
+          es.close();
+        } else if (data.message) {
+          setIngestLog(prev => [...prev, data.message]);
+        }
+      };
+      es.onerror = () => { setIngesting(false); es.close(); };
+    } catch (e) {
+      setIngestLog([`✗ ${e.message}`]);
+      setIngesting(false);
+    }
+  }, [ingesting]);
+
+  // ── run import (and optionally ingest) ────────────────────────────────────
+
+  const handleImport = () => {
+    if (!selectedFile) return;
+    startImport(selectedFile).then(() => {
+      if (ingestPhotos && scanPath.trim()) {
+        startIngest(scanPath.trim());
+      }
+    });
+  };
+
+  // direct file drop / pick
   const handleDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      // In Electron / desktop mode, we'd get the actual path.
-      // In browser mode, show the filename and instruct user to use path input.
-      setFilePath(file.name);
-      setFileMode("drop");
-    }
+    const f = e.dataTransfer.files[0];
+    if (f) { setSelectedFile(f.name); setScanResult(null); }
+  };
+  const handleFilePick = (e) => {
+    const f = e.target.files[0];
+    if (f) { setSelectedFile(f.name); setScanResult(null); }
   };
 
-  const formatNum = (n) => (n ?? 0).toLocaleString();
+  const busy = importing || ingesting;
 
   // ── render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: "20px 24px", maxWidth: 800 }}>
+    <div style={{
+      flex: 1, overflowY: "auto", padding: "28px 32px",
+      display: "flex", flexDirection: "column", gap: 28, maxWidth: 760,
+    }}>
 
-      {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 500, marginBottom: 4 }}>
-          Gramps integration
-        </h2>
-        <p style={{ fontSize: 13, color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
-          Import from a Gramps XML (.gramps) or GEDCOM (.ged) file.
-          All people, families, events, places, sources, and media links are imported in full fidelity.
-          You can re-import any time — existing records are updated, not duplicated.
+      {/* ── header ── */}
+      <div>
+        <h1 style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>Import</h1>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+          Point FamilyRoot at a USB stick, folder, or network share to import a family tree file
+          and copy photos into the library.
         </p>
       </div>
 
-      {/* Database stats */}
-      {stats && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-            Current database
+      {/* ── step 1: scan a folder ── */}
+      <div>
+        <SectionHeader>Step 1 — choose a source folder or USB drive</SectionHeader>
+        <Card>
+          <div style={{ padding: "14px 16px" }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: scanResult || scanError ? 14 : 0 }}>
+              <input
+                type="text"
+                value={scanPath}
+                onChange={e => setScanPath(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleScan()}
+                placeholder="/media/usb  or  D:\FamilyExport  or  /home/pi/imports"
+                style={{ flex: 1, fontSize: 13 }}
+              />
+              <button
+                className="primary"
+                onClick={handleScan}
+                disabled={scanning || !scanPath.trim()}
+                style={{ fontSize: 13, padding: "8px 20px", whiteSpace: "nowrap" }}
+              >
+                {scanning ? "Scanning…" : "Scan"}
+              </button>
+            </div>
+
+            {scanError && (
+              <div style={{ fontSize: 12, color: "#E07070", marginTop: 8 }}>✗ {scanError}</div>
+            )}
+
+            {/* scan results */}
+            {scanResult && (
+              <div style={{ marginTop: 4 }}>
+                {/* photos found */}
+                {scanResult.photo_count > 0 && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px",
+                    background: "var(--bg-input)", borderRadius: 8, marginBottom: 10,
+                  }}>
+                    <span style={{ fontSize: 18 }}>🖼</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>
+                        {scanResult.photo_count.toLocaleString()} photos found
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                        Will be copied into the FamilyRoot media library
+                      </div>
+                    </div>
+                    <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: "var(--text-secondary)" }}>
+                      <input
+                        type="checkbox"
+                        checked={ingestPhotos}
+                        onChange={e => setIngestPhotos(e.target.checked)}
+                        style={{ accentColor: "var(--accent)", width: 14, height: 14 }}
+                      />
+                      Import photos too
+                    </label>
+                  </div>
+                )}
+
+                {/* genealogy files */}
+                {scanResult.ged_files.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "8px 0" }}>
+                    No .gramps or .ged files found in that folder.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 2 }}>
+                      Select a family tree file to import:
+                    </div>
+                    {scanResult.ged_files.map(f => (
+                      <label
+                        key={f.path}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                          border: `1px solid ${selectedFile === f.path ? "var(--accent)" : "var(--border)"}`,
+                          background: selectedFile === f.path ? "#0D2920" : "var(--bg-input)",
+                          transition: "all 0.1s",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="gedfile"
+                          value={f.path}
+                          checked={selectedFile === f.path}
+                          onChange={() => setSelectedFile(f.path)}
+                          style={{ accentColor: "var(--accent)" }}
+                        />
+                        <span style={{ fontSize: 15 }}>
+                          {f.ext === ".gramps" ? "🌳" : "📄"}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {f.name}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                            {f.path}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
+                          {fmtSize(f.size)}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
-            <StatCard label="People"    value={formatNum(stats.persons)}    color="blue"   sub={stats.living ? `${stats.living} living` : null} />
-            <StatCard label="Families"  value={formatNum(stats.families)}   color="teal"   />
-            <StatCard label="Events"    value={formatNum(stats.events)}     color="purple" sub={stats.undated_events ? `${stats.undated_events} undated` : null} />
-            <StatCard label="Places"    value={formatNum(stats.places)}     color="teal"   />
-            <StatCard label="Sources"   value={formatNum(stats.sources)}    color="amber"  />
-            <StatCard label="Media"     value={formatNum(stats.media)}      color="coral"  sub={stats.with_photos ? `${stats.with_photos} linked` : null} />
-          </div>
-          {(stats.undated_events > 0 || stats.unplaced_events > 0) && (
-            <div style={{ marginTop: 10, fontSize: 12, color: "#BA7517", display: "flex", gap: 16 }}>
-              {stats.undated_events > 0 && (
-                <span>⚠ {stats.undated_events} events without a date</span>
-              )}
-              {stats.unplaced_events > 0 && (
-                <span>⚠ {stats.unplaced_events} events without a place</span>
-              )}
+        </Card>
+      </div>
+
+      {/* ── step 2: direct file (fallback) ── */}
+      <div>
+        <SectionHeader>Or drag and drop a file directly</SectionHeader>
+        <div
+          onDrop={handleDrop}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onClick={() => fileRef.current?.click()}
+          style={{
+            border: `1.5px dashed ${dragOver ? "var(--accent)" : "var(--border)"}`,
+            borderRadius: 10, padding: "20px 16px", textAlign: "center",
+            cursor: "pointer",
+            background: dragOver ? "#0D2920" : "transparent",
+            transition: "all 0.15s",
+          }}
+        >
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".gramps,.ged,.gedcom"
+            style={{ display: "none" }}
+            onChange={handleFilePick}
+          />
+          <div style={{ fontSize: 28, marginBottom: 6 }}>📂</div>
+          <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>
+            Drop a .gramps or .ged file here
+          </p>
+          <p style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+            Gramps XML · GEDCOM 5.5 / 5.5.1 / 7.0
+          </p>
+          {selectedFile && !scanResult && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent)" }}>
+              Selected: {selectedFile.split(/[\\/]/).pop()}
             </div>
           )}
-        </div>
-      )}
-
-      {/* Import panel */}
-      <div style={{
-        border: `0.5px solid var(--color-border-tertiary)`,
-        borderRadius: 12, overflow: "hidden", marginBottom: 20,
-      }}>
-        <div style={{ padding: "14px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Import file</span>
-        </div>
-
-        <div style={{ padding: 16 }}>
-          {/* Drag and drop zone */}
-          <div
-            onDrop={handleDrop}
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onClick={() => fileRef.current?.click()}
-            style={{
-              border: `1.5px dashed ${dragOver ? "#1D9E75" : "var(--color-border-secondary)"}`,
-              borderRadius: 8, padding: "24px 16px", textAlign: "center",
-              cursor: "pointer", marginBottom: 14,
-              background: dragOver ? "#E1F5EE" : "var(--color-background-primary)",
-              transition: "all 0.15s",
-            }}
-          >
-            <input ref={fileRef} type="file" accept=".gramps,.ged,.gedcom" style={{ display: "none" }} onChange={e => e.target.files[0] && setFilePath(e.target.files[0].name)} />
-            <div style={{ fontSize: 28, color: "var(--color-text-tertiary)", marginBottom: 8 }}>
-              {/* tree icon via text fallback */}
-              ↑
-            </div>
-            <p style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4 }}>
-              Drop a .gramps or .ged file here
-            </p>
-            <p style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
-              Or click to browse — supports Gramps XML, GEDCOM 5.5 / 5.5.1 / 7.0
-            </p>
-          </div>
-
-          {/* Path input (for Electron / command-line users) */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <input
-              type="text"
-              value={filePath}
-              onChange={e => setFilePath(e.target.value)}
-              placeholder="/home/yourname/family.gramps  or  C:\Users\...\family.ged"
-              style={{ flex: 1, fontSize: 12 }}
-            />
-            <button
-              onClick={() => filePath && startImport(filePath)}
-              disabled={importing || !filePath}
-              style={{ fontSize: 13, padding: "6px 16px", cursor: importing ? "not-allowed" : "pointer", opacity: !filePath ? 0.4 : 1 }}
-            >
-              {importing ? "Importing…" : "Import"}
-            </button>
-          </div>
-
-          {/* Supported formats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-            {[
-              { fmt: ".gramps", label: "Gramps XML", note: "Native — full fidelity", color: "teal" },
-              { fmt: ".ged",    label: "GEDCOM",     note: "Ancestry, FamilySearch, etc.", color: "blue" },
-              { fmt: ".gedcom", label: "GEDCOM 7",   note: "Newer standard", color: "purple" },
-            ].map(({ fmt, label, note, color }) => {
-              const c = { teal: ["#E1F5EE","#0F6E56"], blue: ["#E6F1FB","#185FA5"], purple: ["#EEEDFE","#534AB7"] }[color];
-              return (
-                <div key={fmt} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "10px 12px" }}>
-                  <div style={{ display: "inline-block", background: c[0], color: c[1], fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: 5, marginBottom: 5 }}>{fmt}</div>
-                  <p style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 2 }}>{label}</p>
-                  <p style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{note}</p>
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
 
-      {/* Progress log */}
-      {(importing || importLog.length > 0) && (
-        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-          <div style={{ padding: "10px 14px", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)", display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>Import progress</span>
-            {importing && <span style={{ fontSize: 11, color: "#1D9E75" }}>● running</span>}
-            {importDone && <span style={{ fontSize: 11, color: "#1D9E75" }}>✓ complete</span>}
-          </div>
-          {importing && <ProgressBar pct={importLog.length > 0 ? Math.min(importLog.length * 11, 95) : 5} />}
-          <div
-            ref={logRef}
-            style={{ padding: "10px 14px", fontFamily: "var(--font-mono)", fontSize: 11, maxHeight: 180, overflowY: "auto", color: "var(--color-text-secondary)", lineHeight: 1.7 }}
+      {/* ── import button ── */}
+      {selectedFile && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            className="primary"
+            onClick={handleImport}
+            disabled={busy}
+            style={{ fontSize: 14, padding: "10px 28px" }}
           >
-            {importLog.map((msg, i) => (
-              <div key={i}>{msg}</div>
-            ))}
-            {importing && <div style={{ color: "#1D9E75" }}>▌</div>}
+            {importing ? "Importing…" : ingesting ? "Ingesting photos…" : "Import"}
+          </button>
+          <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+            {selectedFile.split(/[\\/]/).pop()}
+            {ingestPhotos && scanResult?.photo_count > 0 && ` + ${scanResult.photo_count.toLocaleString()} photos`}
           </div>
         </div>
       )}
 
-      {/* Import results */}
-      {importDone && importStats && (
-        <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
-          <div style={{ padding: "10px 14px", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>Import results</span>
-          </div>
-          <div style={{ padding: 14, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 8 }}>
-            {Object.entries(importStats).filter(([, v]) => v > 0).map(([k, v]) => (
-              <StatCard key={k} label={k} value={v.toLocaleString()} color={k === "errors" ? "coral" : "teal"} />
-            ))}
-          </div>
-          {importStats.errors > 0 && (
-            <div style={{ padding: "0 14px 14px", fontSize: 12, color: "#993C1D" }}>
-              {importStats.errors} errors occurred. Check the log above for details.
+      {/* ── progress logs ── */}
+      {(importing || importLog.length > 0) && (
+        <div>
+          <SectionHeader>
+            Family tree import {importing ? "● running" : importDone ? "✓ complete" : ""}
+          </SectionHeader>
+          <LogBox lines={importLog} running={importing} logRef={importLogRef} />
+          {importDone && importStats && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginTop: 12 }}>
+              {Object.entries(importStats).filter(([, v]) => v > 0).map(([k, v]) => (
+                <StatBadge key={k} label={k} value={v} accent={k === "errors" ? "#E07070" : "var(--accent)"} />
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Export section */}
-      <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ padding: "14px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Export / backup</span>
+      {(ingesting || ingestLog.length > 0) && (
+        <div>
+          <SectionHeader>
+            Photo ingest {ingesting ? "● running" : ingestDone ? "✓ complete" : ""}
+          </SectionHeader>
+          <LogBox lines={ingestLog} running={ingesting} logRef={ingestLogRef} />
         </div>
-        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <a href={`${API}/api/gramps/export/gramps`} style={{ textDecoration: "none" }}>
-            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "12px 14px", cursor: "pointer" }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 3 }}>Export Gramps XML</div>
-              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Full fidelity — open in Gramps desktop app</div>
+      )}
+
+      {/* ── db stats ── */}
+      {dbStats && (
+        <div>
+          <SectionHeader>Current database</SectionHeader>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8 }}>
+            <StatBadge label="People"   value={dbStats.persons}   accent="var(--accent)" />
+            <StatBadge label="Families" value={dbStats.families}  />
+            <StatBadge label="Events"   value={dbStats.events}    />
+            <StatBadge label="Places"   value={dbStats.places}    />
+            <StatBadge label="Sources"  value={dbStats.sources}   />
+            <StatBadge label="Photos"   value={dbStats.media}     />
+          </div>
+          {(dbStats.undated_events > 0 || dbStats.unplaced_events > 0) && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#BA7517", display: "flex", gap: 20 }}>
+              {dbStats.undated_events  > 0 && <span>⚠ {dbStats.undated_events} events without a date</span>}
+              {dbStats.unplaced_events > 0 && <span>⚠ {dbStats.unplaced_events} events without a place</span>}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── export ── */}
+      <div>
+        <SectionHeader>Export / backup</SectionHeader>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <a href={`${API}/api/gramps/export/gramps`} style={{ textDecoration: "none" }}>
+            <Card style={{ padding: "12px 14px", cursor: "pointer", transition: "background 0.1s" }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--bg-card-hov)"}
+              onMouseLeave={e => e.currentTarget.style.background = "var(--bg-card)"}
+            >
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>🌳 Export Gramps XML</div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Full fidelity — open in Gramps desktop</div>
+            </Card>
           </a>
           <a href={`${API}/api/gramps/export/gedcom`} style={{ textDecoration: "none" }}>
-            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 8, padding: "12px 14px", cursor: "pointer" }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 3 }}>Export GEDCOM 5.5.1</div>
-              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Share with Ancestry, FamilySearch, MacFamilyTree</div>
-            </div>
+            <Card style={{ padding: "12px 14px", cursor: "pointer", transition: "background 0.1s" }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--bg-card-hov)"}
+              onMouseLeave={e => e.currentTarget.style.background = "var(--bg-card)"}
+            >
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>📄 Export GEDCOM 5.5.1</div>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Share with Ancestry, FamilySearch, MacFamilyTree</div>
+            </Card>
           </a>
         </div>
       </div>
 
+      <div style={{ height: 20 }} />
     </div>
   );
 }
