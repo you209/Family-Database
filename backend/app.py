@@ -16,6 +16,7 @@ from flask_cors import CORS
 from database import init_db, DB_PATH
 from api_photos import photos_bp
 from api_persons import persons_bp
+from api_admin import admin_bp
 from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ init_db(DB_PATH)
 # ── Register blueprints ───────────────────────────────────────────────────────
 app.register_blueprint(photos_bp)
 app.register_blueprint(persons_bp)
+app.register_blueprint(admin_bp)
 register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────

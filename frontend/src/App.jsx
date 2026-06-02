@@ -3,12 +3,14 @@ import PhotosTab   from "./pages/PhotosTab.jsx";
 import FacesTab    from "./pages/FacesTab.jsx";
 import TimelineTab from "./pages/TimelineTab.jsx";
 import GrampsTab   from "./pages/GrampsTab.jsx";
+import AdminTab    from "./pages/AdminTab.jsx";
 
 const TABS = [
   { id: "photos",   label: "Photos"   },
   { id: "faces",    label: "Faces"    },
   { id: "timeline", label: "Timeline" },
   { id: "gramps",   label: "Gramps"   },
+  { id: "admin",    label: "Admin"    },
 ];
 
 const API = "http://localhost:5050";
@@ -83,6 +85,7 @@ export default function App() {
         {tab === "faces"    && <FacesTab />}
         {tab === "timeline" && <TimelineTab />}
         {tab === "gramps"   && <GrampsTab />}
+        {tab === "admin"    && <AdminTab />}
       </main>
     </div>
   );
