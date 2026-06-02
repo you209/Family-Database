@@ -613,6 +613,50 @@ def register_gramps_routes(app, db_path: Path):
             yield f"data: {_json.dumps({'done': True, 'stats': _status['stats']})}\n\n"
         return Response(generate(), mimetype="text/event-stream")
 
+    @gramps_bp.route("/api/gramps/scan")
+    def gramps_scan():
+        """
+        Scan a folder (e.g. USB drive) for importable genealogy files and photos.
+        GET /api/gramps/scan?path=/media/usb
+        """
+        import os
+        scan_path = request.args.get("path", "").strip()
+        if not scan_path or not Path(scan_path).exists():
+            return jsonify({"error": "Path not found"}), 400
+
+        GED_EXT  = {".gramps", ".ged", ".gedcom"}
+        IMG_EXT  = {".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".bmp", ".webp",
+                    ".mp4", ".mov", ".avi", ".mkv", ".m4v"}
+
+        ged_files  = []
+        photo_count = 0
+
+        try:
+            for root, dirs, files in os.walk(scan_path):
+                # skip hidden directories
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for fname in files:
+                    ext = Path(fname).suffix.lower()
+                    if ext in GED_EXT:
+                        full = os.path.join(root, fname)
+                        size = os.path.getsize(full)
+                        ged_files.append({
+                            "path": full,
+                            "name": fname,
+                            "size": size,
+                            "ext":  ext,
+                        })
+                    elif ext in IMG_EXT:
+                        photo_count += 1
+        except PermissionError as e:
+            return jsonify({"error": str(e)}), 403
+
+        return jsonify({
+            "scan_path":   scan_path,
+            "ged_files":   ged_files,
+            "photo_count": photo_count,
+        })
+
     @gramps_bp.route("/api/gramps/stats")
     def gramps_db_stats():
         """Summary of what's in the DB — for the Gramps integration tab."""

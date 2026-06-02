@@ -32,7 +32,7 @@ const NAV = [
   {
     section: "DATA",
     items: [
-      { id: "gramps",    label: "Import / Gramps", icon: "📥" },
+      { id: "gramps",    label: "Import", icon: "📥" },
       { id: "admin",     label: "Manage files",    icon: "🗂"  },
     ],
   },
