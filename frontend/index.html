@@ -8,27 +8,44 @@
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
       :root {
-        --color-background-primary:   #FAFAF8;
-        --color-background-secondary: #F3F1EA;
-        --color-background-tertiary:  #ECEAE1;
-        --color-border-primary:       #D6D3CA;
-        --color-border-secondary:     #C8C5BB;
-        --color-border-tertiary:      #DDD9D0;
-        --color-text-primary:         #1A1916;
-        --color-text-secondary:       #6B6960;
-        --color-text-tertiary:        #9E9B91;
-        --color-accent:               #1D9E75;
-        --color-accent-light:         #E1F5EE;
-        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-        --font-mono: "SF Mono", "Fira Code", Consolas, monospace;
+        /* Dark palette from the mockup */
+        --bg-app:      #111111;
+        --bg-sidebar:  #1A1A1A;
+        --bg-card:     #222222;
+        --bg-card-hov: #2A2A2A;
+        --bg-input:    #2A2A2A;
+        --bg-tag:      #2E2E2E;
+        --bg-sel:      #2C2C2C;
+
+        --border:      #2E2E2E;
+        --border-card: #333333;
+
+        --text-primary:   #F0F0F0;
+        --text-secondary: #888888;
+        --text-tertiary:  #555555;
+
+        --accent:      #1D9E75;
+        --accent-dark: #157A5A;
+
+        /* Avatar palette — cycled by name hash */
+        --av-blue:    #B8D4F0;
+        --av-salmon:  #F0C4B8;
+        --av-teal:    #B8EAD8;
+        --av-lavender:#D4C8F0;
+        --av-peach:   #F0DCC8;
+        --av-rose:    #F0C8D8;
+
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        --mono: "SF Mono", "Fira Code", Consolas, monospace;
+        --sidebar-w: 260px;
       }
 
-      body {
-        font-family: var(--font-sans);
-        background: var(--color-background-primary);
-        color: var(--color-text-primary);
+      html, body, #root {
+        height: 100%;
+        font-family: var(--font);
+        background: var(--bg-app);
+        color: var(--text-primary);
         font-size: 14px;
-        line-height: 1.5;
         -webkit-font-smoothing: antialiased;
       }
 
@@ -38,42 +55,50 @@
         color: inherit;
       }
 
-      input[type="text"], input[type="number"], input[type="search"], select, textarea {
-        background: var(--color-background-primary);
-        border: 0.5px solid var(--color-border-secondary);
-        border-radius: 6px;
-        padding: 6px 10px;
+      input[type="text"],
+      input[type="search"],
+      input[type="number"],
+      select, textarea {
+        background: var(--bg-input);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: var(--text-primary);
         outline: none;
         transition: border-color 0.15s;
       }
-      input[type="text"]:focus, input[type="search"]:focus, select:focus, textarea:focus {
-        border-color: var(--color-accent);
+      input::placeholder { color: var(--text-tertiary); }
+      input:focus, select:focus, textarea:focus {
+        border-color: var(--accent);
       }
 
       button {
-        background: var(--color-background-secondary);
-        border: 0.5px solid var(--color-border-secondary);
-        border-radius: 6px;
-        padding: 6px 14px;
+        background: var(--bg-tag);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        color: var(--text-primary);
         cursor: pointer;
-        transition: background 0.12s;
+        transition: background 0.12s, border-color 0.12s;
       }
-      button:hover:not(:disabled) { background: var(--color-background-tertiary); }
+      button:hover:not(:disabled) { background: var(--bg-card-hov); }
       button:disabled { opacity: 0.4; cursor: not-allowed; }
 
       button.primary {
-        background: var(--color-accent);
+        background: var(--accent);
+        border-color: var(--accent);
         color: #fff;
-        border-color: transparent;
       }
-      button.primary:hover:not(:disabled) { background: #178860; }
+      button.primary:hover:not(:disabled) { background: var(--accent-dark); }
 
-      a { color: var(--color-accent); text-decoration: none; }
+      a { color: var(--accent); text-decoration: none; }
       a:hover { text-decoration: underline; }
 
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: var(--color-border-primary); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   </head>
   <body>
