@@ -21,6 +21,7 @@ from api_map import map_bp
 from api_tree import tree_bp
 from api_edit import edit_bp
 from api_photoprism import photoprism_bp
+from api_grampsengine import grampsengine_bp
 from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ app.register_blueprint(map_bp)
 app.register_blueprint(tree_bp)
 app.register_blueprint(edit_bp)
 app.register_blueprint(photoprism_bp)
+app.register_blueprint(grampsengine_bp)
 register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────
