@@ -5,9 +5,10 @@ import FacesTab    from "./pages/FacesTab.jsx";
 import TimelineTab from "./pages/TimelineTab.jsx";
 import BubbleTab   from "./pages/BubbleTab.jsx";
 import MapTab      from "./pages/MapTab.jsx";
-import TreeTab     from "./pages/TreeTab.jsx";
-import GrampsTab   from "./pages/GrampsTab.jsx";
-import AdminTab    from "./pages/AdminTab.jsx";
+import TreeTab      from "./pages/TreeTab.jsx";
+import GrampsTab    from "./pages/GrampsTab.jsx";
+import AdminTab     from "./pages/AdminTab.jsx";
+import PhotoPrismTab from "./pages/PhotoPrismTab.jsx";
 
 const API = "";
 
@@ -34,8 +35,9 @@ const NAV = [
   {
     section: "DATA",
     items: [
-      { id: "gramps",    label: "Import", icon: "📥" },
-      { id: "admin",     label: "Manage files",    icon: "🗂"  },
+      { id: "gramps",      label: "Import",       icon: "📥" },
+      { id: "photoprism", label: "PhotoPrism",    icon: "📷"  },
+      { id: "admin",      label: "Manage files",  icon: "🗂"  },
     ],
   },
 ];
@@ -153,8 +155,9 @@ export default function App() {
         {page === "map"       && <MapTab      />}
         {page === "photos"    && <PhotosTab   />}
         {page === "faces"     && <FacesTab    />}
-        {page === "gramps"    && <GrampsTab   />}
-        {page === "admin"     && <AdminTab    />}
+        {page === "gramps"      && <GrampsTab    />}
+        {page === "photoprism"  && <PhotoPrismTab />}
+        {page === "admin"       && <AdminTab     />}
         {page === "settings"  && <SettingsPage />}
       </main>
     </div>
