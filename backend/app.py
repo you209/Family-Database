@@ -19,6 +19,12 @@ from api_persons import persons_bp
 from api_admin import admin_bp
 from api_map import map_bp
 from api_tree import tree_bp
+from api_edit import edit_bp
+from api_photoprism import photoprism_bp
+from api_grampsengine import grampsengine_bp
+from api_ocr import tools_bp
+from api_paperless import paperless_bp
+from api_webtrees import webtrees_bp
 from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -34,6 +40,12 @@ app.register_blueprint(persons_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(map_bp)
 app.register_blueprint(tree_bp)
+app.register_blueprint(edit_bp)
+app.register_blueprint(photoprism_bp)
+app.register_blueprint(grampsengine_bp)
+app.register_blueprint(tools_bp)
+app.register_blueprint(paperless_bp)
+app.register_blueprint(webtrees_bp)
 register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────

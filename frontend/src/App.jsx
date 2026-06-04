@@ -5,9 +5,12 @@ import FacesTab    from "./pages/FacesTab.jsx";
 import TimelineTab from "./pages/TimelineTab.jsx";
 import BubbleTab   from "./pages/BubbleTab.jsx";
 import MapTab      from "./pages/MapTab.jsx";
-import TreeTab     from "./pages/TreeTab.jsx";
-import GrampsTab   from "./pages/GrampsTab.jsx";
-import AdminTab    from "./pages/AdminTab.jsx";
+import TreeTab      from "./pages/TreeTab.jsx";
+import GrampsTab    from "./pages/GrampsTab.jsx";
+import AdminTab     from "./pages/AdminTab.jsx";
+import PhotoPrismTab    from "./pages/PhotoPrismTab.jsx";
+import GrampsEngineTab from "./pages/GrampsEngineTab.jsx";
+import ToolsTab        from "./pages/ToolsTab.jsx";
 
 const API = "";
 
@@ -34,8 +37,11 @@ const NAV = [
   {
     section: "DATA",
     items: [
-      { id: "gramps",    label: "Import", icon: "📥" },
-      { id: "admin",     label: "Manage files",    icon: "🗂"  },
+      { id: "gramps",        label: "Import",         icon: "📥" },
+      { id: "grampsengine", label: "Gramps Engine",  icon: "🌿"  },
+      { id: "photoprism",  label: "PhotoPrism",     icon: "📷"  },
+      { id: "tools",       label: "Tools",          icon: "🔧"  },
+      { id: "admin",       label: "Manage files",   icon: "🗂"  },
     ],
   },
 ];
@@ -153,8 +159,11 @@ export default function App() {
         {page === "map"       && <MapTab      />}
         {page === "photos"    && <PhotosTab   />}
         {page === "faces"     && <FacesTab    />}
-        {page === "gramps"    && <GrampsTab   />}
-        {page === "admin"     && <AdminTab    />}
+        {page === "gramps"        && <GrampsTab       />}
+        {page === "grampsengine"  && <GrampsEngineTab />}
+        {page === "photoprism"    && <PhotoPrismTab   />}
+        {page === "tools"         && <ToolsTab        />}
+        {page === "admin"         && <AdminTab        />}
         {page === "settings"  && <SettingsPage />}
       </main>
     </div>

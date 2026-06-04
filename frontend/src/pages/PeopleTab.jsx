@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import EditPersonDrawer from "../components/EditPersonDrawer.jsx";
 
 const API = "";
 
@@ -399,9 +400,10 @@ function LifeStory({ personId }) {
 
 // ── person drawer ─────────────────────────────────────────────────────────────
 
-function PersonDrawer({ person, onClose }) {
+function PersonDrawer({ person, onClose, onPersonUpdated }) {
   const [detail, setDetail]       = useState(null);
   const [drawerTab, setDrawerTab] = useState("story");
+  const [editing, setEditing]     = useState(false);
 
   useEffect(() => {
     if (!person) return;
@@ -459,7 +461,12 @@ function PersonDrawer({ person, onClose }) {
                 </div>
               </div>
             </div>
-            <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "var(--text-secondary)", cursor: "pointer", padding: 4 }}>✕</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setEditing(true)} style={{ fontSize: 12, padding: "5px 14px", borderRadius: 7, border: "1px solid var(--border)", background: "none", color: "var(--text-secondary)", cursor: "pointer" }}>
+                Edit
+              </button>
+              <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: "var(--text-secondary)", cursor: "pointer", padding: 4 }}>✕</button>
+            </div>
           </div>
         </div>
 
@@ -540,6 +547,17 @@ function PersonDrawer({ person, onClose }) {
 
         </div>
       </div>
+
+      {editing && (
+        <EditPersonDrawer
+          person={{ ...person, ...detail }}
+          onClose={() => setEditing(false)}
+          onSaved={updated => {
+            onPersonUpdated?.(updated);
+            setEditing(false);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -688,6 +706,10 @@ export default function PeopleTab() {
       <PersonDrawer
         person={selected}
         onClose={() => setSelected(null)}
+        onPersonUpdated={updated => {
+          setPeople(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+          setSelected(prev => prev ? { ...prev, ...updated } : null);
+        }}
       />
     </div>
   );
