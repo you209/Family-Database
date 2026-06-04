@@ -10,6 +10,7 @@ import GrampsTab    from "./pages/GrampsTab.jsx";
 import AdminTab     from "./pages/AdminTab.jsx";
 import PhotoPrismTab    from "./pages/PhotoPrismTab.jsx";
 import GrampsEngineTab from "./pages/GrampsEngineTab.jsx";
+import ToolsTab        from "./pages/ToolsTab.jsx";
 
 const API = "";
 
@@ -39,6 +40,7 @@ const NAV = [
       { id: "gramps",        label: "Import",         icon: "📥" },
       { id: "grampsengine", label: "Gramps Engine",  icon: "🌿"  },
       { id: "photoprism",  label: "PhotoPrism",     icon: "📷"  },
+      { id: "tools",       label: "Tools",          icon: "🔧"  },
       { id: "admin",       label: "Manage files",   icon: "🗂"  },
     ],
   },
@@ -160,6 +162,7 @@ export default function App() {
         {page === "gramps"        && <GrampsTab       />}
         {page === "grampsengine"  && <GrampsEngineTab />}
         {page === "photoprism"    && <PhotoPrismTab   />}
+        {page === "tools"         && <ToolsTab        />}
         {page === "admin"         && <AdminTab        />}
         {page === "settings"  && <SettingsPage />}
       </main>
