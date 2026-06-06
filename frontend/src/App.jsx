@@ -11,6 +11,7 @@ import AdminTab     from "./pages/AdminTab.jsx";
 import PhotoPrismTab    from "./pages/PhotoPrismTab.jsx";
 import GrampsEngineTab from "./pages/GrampsEngineTab.jsx";
 import ToolsTab        from "./pages/ToolsTab.jsx";
+import OllamaTab       from "./pages/OllamaTab.jsx";
 
 const API = "";
 
@@ -40,6 +41,7 @@ const NAV = [
       { id: "gramps",        label: "Import",         icon: "📥" },
       { id: "grampsengine", label: "Gramps Engine",  icon: "🌿"  },
       { id: "photoprism",  label: "PhotoPrism",     icon: "📷"  },
+      { id: "ollama",      label: "Ollama AI",      icon: "🤖"  },
       { id: "tools",       label: "Tools",          icon: "🔧"  },
       { id: "admin",       label: "Manage files",   icon: "🗂"  },
     ],
@@ -162,6 +164,7 @@ export default function App() {
         {page === "gramps"        && <GrampsTab       />}
         {page === "grampsengine"  && <GrampsEngineTab />}
         {page === "photoprism"    && <PhotoPrismTab   />}
+        {page === "ollama"        && <OllamaTab       />}
         {page === "tools"         && <ToolsTab        />}
         {page === "admin"         && <AdminTab        />}
         {page === "settings"  && <SettingsPage />}
