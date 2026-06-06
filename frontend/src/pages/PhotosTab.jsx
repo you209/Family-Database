@@ -3,6 +3,7 @@
  *
  * Left panel: filter bar + paginated photo grid
  * Right panel: photo detail (metadata editor, face overlay, people list)
+ * Slideshow: fullscreen overlay with navigation, thumbnails, auto-play
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -58,11 +59,12 @@ function Tag({ label, color = "gray", onRemove }) {
 
 // ── photo grid thumbnail ──────────────────────────────────────────────────────
 
-function PhotoThumb({ photo, selected, onClick }) {
+function PhotoThumb({ photo, selected, onClick, onDoubleClick }) {
   const hasUntaggedFaces = photo.face_count > 0 && photo.tagged_faces < photo.face_count;
   return (
     <div
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       style={{
         position: "relative", cursor: "pointer",
         borderRadius: 6, overflow: "hidden",
@@ -398,9 +400,194 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
   );
 }
 
+// ── slideshow ─────────────────────────────────────────────────────────────────
+
+function Slideshow({ photos, startIndex, onClose }) {
+  const [index, setIndex]       = useState(startIndex);
+  const [playing, setPlaying]   = useState(false);
+  const [details, setDetails]   = useState({});  // cache by photo id
+  const thumbsRef = useRef(null);
+  const timerRef  = useRef(null);
+
+  const current = photos[index];
+
+  // Fetch photo detail on demand (cached)
+  useEffect(() => {
+    if (!current) return;
+    if (details[current.id]) return;
+    fetch(`${API}/api/photos/${current.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setDetails(prev => ({ ...prev, [current.id]: d })); })
+      .catch(() => {});
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-play timer
+  useEffect(() => {
+    if (playing) {
+      timerRef.current = setInterval(() => {
+        setIndex(i => (i + 1) % photos.length);
+      }, 4000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [playing, photos.length]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "ArrowLeft")  setIndex(i => (i - 1 + photos.length) % photos.length);
+      if (e.key === "ArrowRight") setIndex(i => (i + 1) % photos.length);
+      if (e.key === "Escape")     onClose();
+      if (e.key === " ")          { e.preventDefault(); setPlaying(p => !p); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [photos.length, onClose]);
+
+  // Scroll active thumbnail into view
+  useEffect(() => {
+    const el = thumbsRef.current?.children[index];
+    el?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [index]);
+
+  if (!current) return null;
+
+  const detail = details[current.id];
+  const dateLabel = detail?.date_text || (detail?.date_year ? String(detail.date_year) : current.date_year ? String(current.date_year) : "");
+  const people = detail?.people || [];
+
+  const navBtnStyle = {
+    position: "absolute", top: "50%", transform: "translateY(-50%)",
+    background: "rgba(0,0,0,0.5)", border: "none", borderRadius: 8,
+    color: "#fff", fontSize: 28, width: 52, height: 72,
+    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+    zIndex: 10,
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "rgba(0,0,0,0.95)",
+      zIndex: 9000,
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* Top bar */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px",
+        background: "rgba(0,0,0,0.6)",
+        flexShrink: 0,
+        gap: 12,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {current.filename}
+          </div>
+          {dateLabel && (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 1 }}>{dateLabel}</div>
+          )}
+        </div>
+
+        {/* Counter */}
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", flexShrink: 0 }}>
+          {index + 1} / {photos.length}
+        </div>
+
+        {/* Play/pause */}
+        <button
+          onClick={() => setPlaying(p => !p)}
+          style={{ background: "none", border: "none", fontSize: 18, color: "#fff", cursor: "pointer", padding: "4px 8px" }}
+          title={playing ? "Pause" : "Play"}
+        >
+          {playing ? "⏸" : "▶"}
+        </button>
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          style={{ background: "none", border: "none", fontSize: 20, color: "rgba(255,255,255,0.8)", cursor: "pointer", padding: "4px 8px" }}
+        >✕</button>
+      </div>
+
+      {/* Main image area */}
+      <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        {/* Prev */}
+        <button
+          style={{ ...navBtnStyle, left: 8 }}
+          onClick={() => setIndex(i => (i - 1 + photos.length) % photos.length)}
+        >←</button>
+
+        {/* Image */}
+        <img
+          key={current.id}
+          src={current.original_url || current.thumb_url}
+          alt={current.filename}
+          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }}
+        />
+
+        {/* Next */}
+        <button
+          style={{ ...navBtnStyle, right: 8 }}
+          onClick={() => setIndex(i => (i + 1) % photos.length)}
+        >→</button>
+
+        {/* Person tags overlay */}
+        {people.length > 0 && (
+          <div style={{
+            position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)",
+            display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            {people.map(p => (
+              <span key={p.id} style={{
+                background: "rgba(29,158,117,0.85)", color: "#fff",
+                fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 5,
+              }}>{p.name}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      <div
+        ref={thumbsRef}
+        style={{
+          display: "flex", gap: 4, padding: "8px 12px",
+          overflowX: "auto", flexShrink: 0,
+          background: "rgba(0,0,0,0.7)",
+          scrollbarWidth: "thin",
+          scrollbarColor: "rgba(255,255,255,0.2) transparent",
+        }}
+      >
+        {photos.map((p, i) => (
+          <div
+            key={p.id}
+            onClick={() => setIndex(i)}
+            style={{
+              width: 56, height: 56, flexShrink: 0,
+              borderRadius: 4, overflow: "hidden",
+              border: i === index ? "2px solid var(--accent)" : "2px solid transparent",
+              cursor: "pointer", opacity: i === index ? 1 : 0.55,
+              transition: "opacity 0.1s, border-color 0.1s",
+              background: "#111",
+            }}
+          >
+            {p.thumb_url ? (
+              <img src={p.thumb_url} alt={p.filename} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#555", fontSize: 18 }}>🖼</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── filter bar ────────────────────────────────────────────────────────────────
 
-function FilterBar({ filters, onChange, stats }) {
+function FilterBar({ filters, onChange, stats, onSlideshow }) {
   const years = [];
   if (stats?.earliest_year && stats?.latest_year) {
     for (let y = stats.latest_year; y >= stats.earliest_year; y--) years.push(y);
@@ -461,6 +648,19 @@ function FilterBar({ filters, onChange, stats }) {
           {stats.without_date > 0 && ` · ${stats.without_date} undated`}
         </span>
       )}
+
+      {/* Slideshow button */}
+      <button
+        onClick={onSlideshow}
+        style={{
+          fontSize: 12, padding: "5px 10px",
+          background: "var(--bg-sel)", border: "1px solid var(--border)",
+          borderRadius: 6, color: "var(--text-primary)", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 4,
+        }}
+      >
+        ▶ Slideshow
+      </button>
     </div>
   );
 }
@@ -494,6 +694,7 @@ export default function PhotosTab() {
   const [selectedId, setSelectedId] = useState(null);
   const [stats, setStats]         = useState(null);
   const [filters, setFilters]     = useState({ page: 1, sort: "date_asc" });
+  const [slideshow, setSlideshow] = useState(null); // { startIndex }
   const gridRef = useRef(null);
 
   // Load stats once
@@ -538,9 +739,23 @@ export default function PhotosTab() {
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      {/* Slideshow overlay */}
+      {slideshow && photos.length > 0 && (
+        <Slideshow
+          photos={photos}
+          startIndex={slideshow.startIndex}
+          onClose={() => setSlideshow(null)}
+        />
+      )}
+
       {/* Left: grid */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <FilterBar filters={filters} onChange={handleFilterChange} stats={stats} />
+        <FilterBar
+          filters={filters}
+          onChange={handleFilterChange}
+          stats={stats}
+          onSlideshow={() => setSlideshow({ startIndex: 0 })}
+        />
 
         {/* Grid */}
         <div ref={gridRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
@@ -566,12 +781,13 @@ export default function PhotosTab() {
               gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
               gap: 8,
             }}>
-              {photos.map(p => (
+              {photos.map((p, i) => (
                 <PhotoThumb
                   key={p.id}
                   photo={p}
                   selected={selectedId === p.id}
                   onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                  onDoubleClick={() => setSlideshow({ startIndex: i })}
                 />
               ))}
             </div>

@@ -657,6 +657,131 @@ export default function App() {
   );
 }
 
+// ── shared access settings card ───────────────────────────────────────────────
+
+function SharedAccessCard({ cardStyle, sectionTitleStyle, btnStyle, accentBtnStyle }) {
+  const [shareEnabled, setShareEnabled] = useState(false);
+  const [hasPin, setHasPin]             = useState(false);
+  const [pinInput, setPinInput]         = useState("");
+  const [showSetup, setShowSetup]       = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [msg, setMsg]                   = useState(null);
+
+  useEffect(() => {
+    fetch(`${API}/api/share/status`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) { setShareEnabled(d.enabled); setHasPin(d.has_pin); } })
+      .catch(() => {});
+  }, []);
+
+  const savePin = async () => {
+    if (!/^\d{6}$/.test(pinInput)) { setMsg({ ok: false, text: "PIN must be exactly 6 digits" }); return; }
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/api/share/setup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinInput, enabled: true }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setShareEnabled(true);
+        setHasPin(true);
+        setShowSetup(false);
+        setPinInput("");
+        setMsg({ ok: true, text: "PIN protection enabled." });
+      } else {
+        setMsg({ ok: false, text: d.error || "Failed to save PIN." });
+      }
+    } catch {
+      setMsg({ ok: false, text: "Network error." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const disable = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/api/share/disable`, { method: "POST" });
+      setShareEnabled(false);
+      setShowSetup(false);
+      setMsg({ ok: true, text: "Shared access disabled." });
+    } catch {
+      setMsg({ ok: false, text: "Network error." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={cardStyle}>
+      <div style={sectionTitleStyle}>Shared Access</div>
+
+      <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+        Anyone visiting this address will need the PIN to view records.
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={shareEnabled}
+            onChange={e => {
+              if (e.target.checked) { setShowSetup(true); setMsg(null); }
+              else disable();
+            }}
+          />
+          Enable PIN protection
+        </label>
+        <span style={{
+          fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 5,
+          background: shareEnabled ? "rgba(29,158,117,0.18)" : "var(--bg-sel)",
+          color: shareEnabled ? "#1D9E75" : "var(--text-tertiary)",
+        }}>
+          {shareEnabled ? "ENABLED" : "DISABLED"}
+        </span>
+      </div>
+
+      {(showSetup || (!shareEnabled && hasPin)) && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+            {hasPin ? "Set a new 6-digit PIN:" : "Set a 6-digit PIN:"}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="password"
+              value={pinInput}
+              maxLength={6}
+              onChange={e => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="••••••"
+              style={{ width: 100, fontSize: 16, letterSpacing: "0.2em", textAlign: "center" }}
+            />
+            <button style={accentBtnStyle} onClick={savePin} disabled={saving}>
+              {saving ? "Saving…" : "Save PIN"}
+            </button>
+            <button style={btnStyle} onClick={() => { setShowSetup(false); setPinInput(""); setMsg(null); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {shareEnabled && !showSetup && (
+        <button style={btnStyle} onClick={() => { setShowSetup(true); setMsg(null); }}>
+          {hasPin ? "Change PIN" : "Set PIN"}
+        </button>
+      )}
+
+      {msg && (
+        <div style={{ fontSize: 12, marginTop: 8, color: msg.ok ? "var(--accent)" : "#e05c5c" }}>
+          {msg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const [stats, setStats] = useState(null);
   const [statsErr, setStatsErr] = useState(false);
