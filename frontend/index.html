@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>FamilyRoot</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -99,6 +102,14 @@
       ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 
       @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Mobile: prevent horizontal scroll */
+      html, body { overflow-x: hidden; }
+
+      /* Mobile: prevent iOS input zoom (font-size must be >= 16px) */
+      @media (max-width: 767px) {
+        input, select, textarea { font-size: 16px !important; }
+      }
     </style>
   </head>
   <body>

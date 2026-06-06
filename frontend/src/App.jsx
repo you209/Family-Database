@@ -48,47 +48,79 @@ const NAV = [
   },
 ];
 
+// Bottom tab bar items (mobile only — most important pages)
+const BOTTOM_TABS = [
+  { id: "people",   label: "People",   icon: "👥" },
+  { id: "tree",     label: "Tree",     icon: "🌳" },
+  { id: "timeline", label: "Timeline", icon: "📅" },
+  { id: "photos",   label: "Photos",   icon: "🖼" },
+  { id: "gramps",   label: "Import",   icon: "📥" },
+];
+
+// ── useWindowWidth hook ───────────────────────────────────────────────────────
+
+function useWindowWidth() {
+  const [width, setWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return width;
+}
+
 // ── sidebar ───────────────────────────────────────────────────────────────────
 
-function Sidebar({ active, onNav, dbName }) {
+function Sidebar({ active, onNav, dbName, collapsed }) {
   return (
     <aside style={{
-      width: "var(--sidebar-w)", flexShrink: 0,
+      width: collapsed ? 60 : "var(--sidebar-w)",
+      flexShrink: 0,
       background: "var(--bg-sidebar)",
       borderRight: "1px solid var(--border)",
       display: "flex", flexDirection: "column",
       overflow: "hidden",
+      transition: "width 0.2s ease",
     }}>
       {/* App identity */}
-      <div style={{ padding: "20px 20px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+      <div style={{ padding: collapsed ? "20px 0 16px" : "20px 20px 16px", display: "flex", justifyContent: collapsed ? "center" : "flex-start", alignItems: "center" }}>
+        {collapsed ? (
           <span style={{ fontSize: 22 }}>🌳</span>
-          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em" }}>FamilyRoot</span>
-        </div>
-        {dbName && (
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 32 }}>
-            {dbName}
+        ) : (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <span style={{ fontSize: 22 }}>🌳</span>
+              <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: "-0.02em" }}>FamilyRoot</span>
+            </div>
+            {dbName && (
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", paddingLeft: 32 }}>
+                {dbName}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Nav sections */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "4px 10px" }}>
+      <nav style={{ flex: 1, overflowY: "auto", padding: collapsed ? "4px 0" : "4px 10px" }}>
         {NAV.map(group => (
-          <div key={group.section} style={{ marginBottom: 20 }}>
-            <div style={{
-              fontSize: 10, fontWeight: 600, letterSpacing: "0.1em",
-              color: "var(--text-tertiary)", textTransform: "uppercase",
-              padding: "0 10px", marginBottom: 4,
-            }}>
-              {group.section}
-            </div>
+          <div key={group.section} style={{ marginBottom: collapsed ? 8 : 20 }}>
+            {!collapsed && (
+              <div style={{
+                fontSize: 10, fontWeight: 600, letterSpacing: "0.1em",
+                color: "var(--text-tertiary)", textTransform: "uppercase",
+                padding: "0 10px", marginBottom: 4,
+              }}>
+                {group.section}
+              </div>
+            )}
             {group.items.map(item => (
               <NavItem
                 key={item.id}
                 item={item}
                 active={active === item.id}
                 onClick={() => onNav(item.id)}
+                collapsed={collapsed}
               />
             ))}
           </div>
@@ -96,28 +128,32 @@ function Sidebar({ active, onNav, dbName }) {
       </nav>
 
       {/* Settings */}
-      <div style={{ padding: "12px 10px", borderTop: "1px solid var(--border)" }}>
+      <div style={{ padding: collapsed ? "12px 0" : "12px 10px", borderTop: "1px solid var(--border)" }}>
         <NavItem
           item={{ id: "settings", label: "Settings", icon: "⚙️" }}
           active={active === "settings"}
           onClick={() => onNav("settings")}
+          collapsed={collapsed}
         />
       </div>
     </aside>
   );
 }
 
-function NavItem({ item, active, onClick }) {
+function NavItem({ item, active, onClick, collapsed }) {
   return (
     <button
       onClick={onClick}
+      title={collapsed ? item.label : undefined}
       style={{
-        display: "flex", alignItems: "center", gap: 10,
+        display: "flex", alignItems: "center",
+        justifyContent: collapsed ? "center" : "flex-start",
+        gap: collapsed ? 0 : 10,
         width: "100%", textAlign: "left",
         background: active ? "var(--bg-sel)" : "none",
         border: "none",
         borderRadius: 8,
-        padding: "8px 10px",
+        padding: collapsed ? "10px 0" : "8px 10px",
         fontSize: 13,
         fontWeight: active ? 500 : 400,
         color: active ? "var(--text-primary)" : "var(--text-secondary)",
@@ -128,11 +164,178 @@ function NavItem({ item, active, onClick }) {
       onMouseEnter={e => { if (!active) e.currentTarget.style.background = "var(--bg-card)"; }}
       onMouseLeave={e => { if (!active) e.currentTarget.style.background = "none"; }}
     >
-      <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>
+      <span style={{ fontSize: collapsed ? 18 : 15, width: collapsed ? "auto" : 20, textAlign: "center", flexShrink: 0 }}>
         {item.icon}
       </span>
-      {item.label}
+      {!collapsed && item.label}
     </button>
+  );
+}
+
+// ── mobile bottom tab bar ─────────────────────────────────────────────────────
+
+function BottomTabBar({ active, onNav }) {
+  return (
+    <div style={{
+      position: "fixed", bottom: 0, left: 0, right: 0,
+      height: 60,
+      background: "var(--bg-sidebar)",
+      borderTop: "1px solid var(--border)",
+      display: "flex",
+      zIndex: 100,
+    }}>
+      {BOTTOM_TABS.map(tab => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onNav(tab.id)}
+            style={{
+              flex: 1,
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              gap: 2,
+              background: "none",
+              border: "none",
+              borderRadius: 0,
+              padding: 0,
+              color: isActive ? "var(--accent)" : "var(--text-secondary)",
+              cursor: "pointer",
+              transition: "color 0.1s",
+            }}
+          >
+            <span style={{ fontSize: 20 }}>{tab.icon}</span>
+            <span style={{ fontSize: 10 }}>{tab.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── mobile header + drawer ────────────────────────────────────────────────────
+
+function MobileHeader({ active, onNav, dbName }) {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const handleNav = (id) => {
+    onNav(id);
+    setDrawerOpen(false);
+  };
+
+  return (
+    <>
+      {/* Top bar */}
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0,
+        height: 52,
+        background: "var(--bg-sidebar)",
+        borderBottom: "1px solid var(--border)",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 16px",
+        zIndex: 100,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 20 }}>🌳</span>
+          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em" }}>FamilyRoot</span>
+        </div>
+        <button
+          onClick={() => setDrawerOpen(true)}
+          style={{
+            background: "none", border: "none",
+            borderRadius: 8, padding: "6px 8px",
+            fontSize: 20, color: "var(--text-primary)",
+            cursor: "pointer",
+          }}
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+      </div>
+
+      {/* Overlay */}
+      {drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          style={{
+            position: "fixed", inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 200,
+          }}
+        />
+      )}
+
+      {/* Drawer */}
+      <div style={{
+        position: "fixed", top: 0, left: 0, bottom: 0,
+        width: 280,
+        background: "var(--bg-sidebar)",
+        borderRight: "1px solid var(--border)",
+        display: "flex", flexDirection: "column",
+        zIndex: 300,
+        transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform 0.25s ease",
+        overflowY: "auto",
+      }}>
+        {/* Drawer header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "16px 16px 12px",
+          borderBottom: "1px solid var(--border)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 20 }}>🌳</span>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>FamilyRoot</span>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            style={{
+              background: "none", border: "none",
+              borderRadius: 8, padding: "4px 8px",
+              fontSize: 18, color: "var(--text-secondary)",
+              cursor: "pointer",
+            }}
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Drawer nav */}
+        <nav style={{ flex: 1, padding: "8px 10px" }}>
+          {NAV.map(group => (
+            <div key={group.section} style={{ marginBottom: 20 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 600, letterSpacing: "0.1em",
+                color: "var(--text-tertiary)", textTransform: "uppercase",
+                padding: "0 10px", marginBottom: 4,
+              }}>
+                {group.section}
+              </div>
+              {group.items.map(item => (
+                <NavItem
+                  key={item.id}
+                  item={item}
+                  active={active === item.id}
+                  onClick={() => handleNav(item.id)}
+                  collapsed={false}
+                />
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        {/* Drawer settings */}
+        <div style={{ padding: "12px 10px", borderTop: "1px solid var(--border)" }}>
+          <NavItem
+            item={{ id: "settings", label: "Settings", icon: "⚙️" }}
+            active={active === "settings"}
+            onClick={() => handleNav("settings")}
+            collapsed={false}
+          />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -141,6 +344,11 @@ function NavItem({ item, active, onClick }) {
 export default function App() {
   const [page,   setPage]   = useState("people");
   const [dbName, setDbName] = useState(null);
+  const width = useWindowWidth();
+
+  const isMobile  = width < 768;
+  const isTablet  = width >= 768 && width < 1024;
+  // isDesktop = width >= 1024
 
   useEffect(() => {
     fetch(`${API}/api/health`)
@@ -151,9 +359,24 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <Sidebar active={page} onNav={setPage} dbName={dbName} />
+      {/* Sidebar: hidden on mobile, collapsed on tablet, full on desktop */}
+      {!isMobile && (
+        <Sidebar active={page} onNav={setPage} dbName={dbName} collapsed={isTablet} />
+      )}
 
-      <main style={{ flex: 1, display: "flex", overflow: "hidden", background: "var(--bg-app)" }}>
+      {/* Mobile top bar + drawer */}
+      {isMobile && (
+        <MobileHeader active={page} onNav={setPage} dbName={dbName} />
+      )}
+
+      <main style={{
+        flex: 1,
+        display: "flex",
+        overflow: "hidden",
+        background: "var(--bg-app)",
+        paddingTop: isMobile ? 52 : 0,
+        paddingBottom: isMobile ? 60 : 0,
+      }}>
         {page === "people"    && <PeopleTab   onNav={setPage} />}
         {page === "tree"      && <TreeTab     />}
         {page === "bubbles"   && <BubbleTab   />}
@@ -169,6 +392,11 @@ export default function App() {
         {page === "admin"         && <AdminTab        />}
         {page === "settings"  && <SettingsPage />}
       </main>
+
+      {/* Mobile bottom tab bar */}
+      {isMobile && (
+        <BottomTabBar active={page} onNav={setPage} />
+      )}
     </div>
   );
 }
