@@ -13,6 +13,7 @@ import GrampsEngineTab from "./pages/GrampsEngineTab.jsx";
 import ToolsTab        from "./pages/ToolsTab.jsx";
 import OllamaTab       from "./pages/OllamaTab.jsx";
 import SourcesTab     from "./pages/SourcesTab.jsx";
+import StatsTab        from "./pages/StatsTab.jsx";
 
 const API = "";
 
@@ -30,6 +31,7 @@ const NAV = [
   {
     section: "RECORDS",
     items: [
+      { id: "stats",     label: "Statistics",     icon: "📊" },
       { id: "timeline",  label: "Timeline",       icon: "📅" },
       { id: "map",       label: "Places",         icon: "🗺"  },
       { id: "photos",    label: "Photos & media", icon: "🖼"  },
@@ -638,6 +640,7 @@ export default function App() {
         {page === "people"    && <PeopleTab   onNav={setPage} />}
         {page === "tree"      && <TreeTab     />}
         {page === "bubbles"   && <BubbleTab   />}
+        {page === "stats"     && <StatsTab     />}
         {page === "timeline"  && <TimelineTab />}
         {page === "map"       && <MapTab      />}
         {page === "photos"    && <PhotosTab   />}
