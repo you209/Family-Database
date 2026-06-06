@@ -27,6 +27,7 @@ from api_paperless import paperless_bp
 from api_webtrees import webtrees_bp
 from api_ollama import ollama_bp
 from api_export import export_bp
+from api_search import search_bp
 from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ app.register_blueprint(paperless_bp)
 app.register_blueprint(webtrees_bp)
 app.register_blueprint(ollama_bp)
 app.register_blueprint(export_bp)
+app.register_blueprint(search_bp)
 register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────

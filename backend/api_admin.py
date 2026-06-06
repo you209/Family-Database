@@ -29,14 +29,18 @@ File naming: YYYY-MM-DD-NNN.ext
   NNN = 3-digit sequence within the folder, zero-padded
 """
 
+import io
 import json
 import os
 import re
 import shutil
+import tempfile
 import threading
+import zipfile
+from datetime import date
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file
 from database import get_db, rows_to_list, row_to_dict
 
 admin_bp = Blueprint("admin", __name__)
@@ -371,3 +375,79 @@ def admin_ingest_status():
         yield f"data: {final}\n\n"
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+# ── backup & restore ──────────────────────────────────────────────────────────
+
+@admin_bp.route("/api/admin/backup")
+def admin_backup():
+    from database import DB_PATH
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Add database
+        db_path = Path(DB_PATH)
+        if db_path.exists():
+            zf.write(db_path, "familyroot.db")
+
+        # Add media files
+        media_root = MEDIA_ROOT
+        if media_root.exists():
+            for f in media_root.rglob("*"):
+                if f.is_file():
+                    zf.write(f, str(f.relative_to(media_root.parent)))
+
+    buf.seek(0)
+    filename = f"familyroot-backup-{date.today().isoformat()}.zip"
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+@admin_bp.route("/api/admin/restore", methods=["POST"])
+def admin_restore():
+    from database import DB_PATH
+
+    if _ingest_status.get("running"):
+        return jsonify({"error": "Ingestion is currently running; stop it before restoring"}), 409
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded (field name: 'file')"}), 400
+
+    uploaded = request.files["file"]
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+        uploaded.save(tmp_path)
+
+    try:
+        with zipfile.ZipFile(tmp_path, "r") as zf:
+            names = zf.namelist()
+            if "familyroot.db" not in names:
+                return jsonify({"error": "Invalid backup: zip does not contain familyroot.db"}), 400
+
+            # Restore database
+            db_path = Path(DB_PATH)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open("familyroot.db") as src, open(db_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+            # Restore media files
+            media_count = 0
+            media_parent = MEDIA_ROOT.parent
+            for name in names:
+                if name == "familyroot.db":
+                    continue
+                dest = media_parent / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(name) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                media_count += 1
+
+    finally:
+        os.unlink(tmp_path)
+
+    return jsonify({"ok": True, "restored": {"db": True, "media_files": media_count}})
