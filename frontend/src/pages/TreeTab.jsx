@@ -606,6 +606,134 @@ function PersonPicker({ value, onChange }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RELATIONSHIP FINDER PANEL
+// ═══════════════════════════════════════════════════════════════════════════
+
+function RelationshipPanel() {
+  const [personA, setPersonA] = useState(null);
+  const [personB, setPersonB] = useState(null);
+  const [result,  setResult]  = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+
+  const findRelationship = () => {
+    if (!personA || !personB) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    fetch(`${API}/api/tree/relationship?a=${personA.id}&b=${personB.id}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(d => { setResult(d); setLoading(false); })
+      .catch(e => { setError(String(e)); setLoading(false); });
+  };
+
+  return (
+    <div style={{
+      margin: "16px 20px",
+      background: "var(--bg-card)",
+      border: "1px solid var(--border)",
+      borderRadius: 10,
+      padding: "16px 20px",
+      flexShrink: 0,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+        Relationship Finder
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>Person A</div>
+          <PersonPicker value={personA} onChange={setPersonA} />
+        </div>
+        <div style={{ color: "var(--text-tertiary)", marginTop: 16 }}>↔</div>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 4 }}>Person B</div>
+          <PersonPicker value={personB} onChange={setPersonB} />
+        </div>
+        <button
+          onClick={findRelationship}
+          disabled={!personA || !personB || loading}
+          style={{
+            marginTop: 16,
+            background: "var(--accent, #1D9E75)",
+            border: "none",
+            borderRadius: 8,
+            padding: "8px 16px",
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#fff",
+            cursor: (!personA || !personB || loading) ? "default" : "pointer",
+            opacity: (!personA || !personB) ? 0.5 : 1,
+          }}
+        >
+          {loading ? "Searching…" : "Find relationship"}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 12, color: "#E06C75", fontSize: 13 }}>Error: {error}</div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 16 }}>
+          {result.relationship === "not related" ? (
+            <div style={{ fontSize: 14, color: "var(--text-secondary)" }}>
+              These two people appear to be <strong style={{ color: "var(--text-primary)" }}>not related</strong> in the database.
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent, #1D9E75)", marginBottom: 8 }}>
+                {result.relationship}
+              </div>
+
+              {result.path && result.path.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+                  {result.path.map((step, i) => (
+                    step === "→" ? (
+                      <span key={i} style={{ color: "var(--text-tertiary)", fontSize: 14 }}>→</span>
+                    ) : (
+                      <span key={i} style={{
+                        background: "var(--bg-sel)",
+                        borderRadius: 6,
+                        padding: "2px 8px",
+                        fontSize: 13,
+                        color: "var(--text-primary)",
+                      }}>
+                        {step}
+                      </span>
+                    )
+                  ))}
+                </div>
+              )}
+
+              {result.common_ancestors && result.common_ancestors.length > 0 && (
+                <div>
+                  <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                    Common ancestor{result.common_ancestors.length > 1 ? "s" : ""}:
+                  </span>
+                  {result.common_ancestors.map(ca => (
+                    <span key={ca.id} style={{
+                      marginLeft: 8,
+                      fontSize: 13,
+                      color: "var(--text-secondary)",
+                      background: "var(--bg-sel)",
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                    }}>
+                      {ca.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN TAB
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -634,7 +762,7 @@ export default function TreeTab({ initialPersonId }) {
   };
 
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", overflowY: "auto" }}>
 
       {/* toolbar */}
       <div style={{
@@ -674,6 +802,24 @@ export default function TreeTab({ initialPersonId }) {
             Click any person in the chart to recentre
           </div>
         )}
+
+        {/* print button — push to far right */}
+        <div style={{ marginLeft: "auto" }}>
+          <button
+            onClick={() => window.print()}
+            style={{
+              background: "var(--bg-input)",
+              border: "1px solid var(--border)",
+              borderRadius: 7,
+              padding: "5px 12px",
+              fontSize: 12,
+              color: "var(--text-secondary)",
+              cursor: "pointer",
+            }}
+          >
+            🖨 Print
+          </button>
+        </div>
       </div>
 
       {/* chart area */}
@@ -682,11 +828,14 @@ export default function TreeTab({ initialPersonId }) {
           Search for a person above to view their family tree.
         </div>
       ) : (
-        <>
-          {view === "fan"         && <FanChart     rootId={rootPerson.id} onSelectPerson={handleSelectFromTree} />}
-          {view === "pedigree"    && <PedigreeTree rootId={rootPerson.id} onSelectPerson={handleSelectFromTree} />}
-          {view === "descendants" && <DescTree     rootId={rootPerson.id} onSelectPerson={handleSelectFromTree} />}
-        </>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 400 }}>
+            {view === "fan"         && <FanChart     rootId={rootPerson.id} onSelectPerson={handleSelectFromTree} />}
+            {view === "pedigree"    && <PedigreeTree rootId={rootPerson.id} onSelectPerson={handleSelectFromTree} />}
+            {view === "descendants" && <DescTree     rootId={rootPerson.id} onSelectPerson={handleSelectFromTree} />}
+          </div>
+          <RelationshipPanel />
+        </div>
       )}
     </div>
   );

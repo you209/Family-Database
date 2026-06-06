@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import PeopleTab   from "./pages/PeopleTab.jsx";
 import PhotosTab   from "./pages/PhotosTab.jsx";
 import FacesTab    from "./pages/FacesTab.jsx";
@@ -67,6 +67,140 @@ function useWindowWidth() {
     return () => window.removeEventListener("resize", handler);
   }, []);
   return width;
+}
+
+// ── global search ─────────────────────────────────────────────────────────────
+
+function GlobalSearch({ onNav }) {
+  const [q,       setQ]       = useState("");
+  const [results, setResults] = useState(null);
+  const [open,    setOpen]    = useState(false);
+  const [loading, setLoading] = useState(false);
+  const ref     = useRef(null);
+  const timerRef = useRef(null);
+
+  const search = useCallback((query) => {
+    if (query.length < 2) { setResults(null); setOpen(false); return; }
+    setLoading(true);
+    fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) { setResults(d.results); setOpen(true); }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setQ(val);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => search(val), 300);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Escape") { setOpen(false); setQ(""); }
+  };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleSelect = (item) => {
+    setOpen(false);
+    setQ("");
+    const TAB_MAP = { person: "people", place: "map", event: "timeline", media: "photos" };
+    onNav(TAB_MAP[item.type] || "people");
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative", padding: "0 10px", marginBottom: 8 }}>
+      <div style={{ position: "relative" }}>
+        <span style={{
+          position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)",
+          fontSize: 13, pointerEvents: "none", color: "var(--text-tertiary)",
+        }}>🔍</span>
+        <input
+          type="search"
+          value={q}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onFocus={() => results && results.length > 0 && setOpen(true)}
+          placeholder="Search…"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            background: "var(--bg-sel)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "7px 10px 7px 30px",
+            fontSize: 13,
+            color: "var(--text-primary)",
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {open && results && results.length > 0 && (
+        <div style={{
+          position: "absolute",
+          top: "100%",
+          left: 10,
+          right: 10,
+          zIndex: 200,
+          background: "var(--bg-card)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          marginTop: 4,
+          maxHeight: 360,
+          overflowY: "auto",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        }}>
+          {results.map((item, i) => (
+            <div
+              key={`${item.type}-${item.id}-${i}`}
+              onMouseDown={() => handleSelect(item)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 12px",
+                cursor: "pointer",
+                borderBottom: i < results.length - 1 ? "1px solid var(--border)" : "none",
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--bg-card-hov, var(--bg-sel))"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}
+            >
+              <span style={{ fontSize: 16 }}>{item.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {item.title}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {item.subtitle}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {open && results && results.length === 0 && !loading && (
+        <div style={{
+          position: "absolute", top: "100%", left: 10, right: 10, zIndex: 200,
+          background: "var(--bg-card)", border: "1px solid var(--border)",
+          borderRadius: 8, marginTop: 4,
+          padding: "12px",
+          fontSize: 13, color: "var(--text-secondary)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        }}>
+          No results found
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── sidebar ───────────────────────────────────────────────────────────────────
@@ -404,6 +538,9 @@ export default function App() {
 function SettingsPage() {
   const [stats, setStats] = useState(null);
   const [statsErr, setStatsErr] = useState(false);
+  const [restoreFile, setRestoreFile] = useState(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState(null);
 
   useEffect(() => {
     fetch("/api/export/stats")
@@ -489,6 +626,68 @@ function SettingsPage() {
         )}
       </div>
 
+      {/* Backup & Restore */}
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>Backup &amp; Restore</div>
+
+        {/* Backup */}
+        <button style={accentBtnStyle} onClick={() => window.open("/api/admin/backup")}>
+          Create backup
+        </button>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
+          Downloads a zip of your database and all media files.
+        </div>
+
+        <hr style={{ border: "none", borderTop: "1px solid var(--border)", marginBottom: 14 }} />
+
+        {/* Restore */}
+        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", marginBottom: 8 }}>
+          Restore from backup
+        </div>
+        <div style={{ fontSize: 12, color: "#e05c5c", marginBottom: 10, fontWeight: 500 }}>
+          ⚠ This will overwrite your current database
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <input
+            type="file"
+            accept=".zip"
+            onChange={e => { setRestoreFile(e.target.files[0] || null); setRestoreMsg(null); }}
+            style={{ fontSize: 12 }}
+          />
+          <button
+            style={btnStyle}
+            disabled={!restoreFile || restoring}
+            onClick={async () => {
+              if (!restoreFile) return;
+              setRestoring(true);
+              setRestoreMsg(null);
+              const fd = new FormData();
+              fd.append("file", restoreFile);
+              try {
+                const r = await fetch("/api/admin/restore", { method: "POST", body: fd });
+                const d = await r.json();
+                if (d.ok) {
+                  setRestoreMsg({ ok: true, text: `Restored — ${d.restored.media_files} media files.` });
+                } else {
+                  setRestoreMsg({ ok: false, text: d.error || "Restore failed." });
+                }
+              } catch {
+                setRestoreMsg({ ok: false, text: "Network error during restore." });
+              } finally {
+                setRestoring(false);
+              }
+            }}
+          >
+            {restoring ? "Restoring…" : "Restore"}
+          </button>
+        </div>
+        {restoreMsg && (
+          <div style={{ fontSize: 12, color: restoreMsg.ok ? "var(--accent)" : "#e05c5c" }}>
+            {restoreMsg.text}
+          </div>
+        )}
+      </div>
+
       {/* Export */}
       <div style={cardStyle}>
         <div style={sectionTitleStyle}>Export</div>
@@ -503,6 +702,14 @@ function SettingsPage() {
         </button>
         <button style={btnStyle} onClick={() => window.open("/api/export/csv/events")}>
           Download events CSV
+        </button>
+      </div>
+
+      {/* Print */}
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>Print</div>
+        <button style={btnStyle} onClick={() => window.print()}>
+          🖨 Print this page
         </button>
       </div>
 

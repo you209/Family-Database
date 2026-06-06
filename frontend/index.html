@@ -110,6 +110,34 @@
       @media (max-width: 767px) {
         input, select, textarea { font-size: 16px !important; }
       }
+
+      @media print {
+        /* Hide nav/sidebar/buttons */
+        aside, nav, button, .no-print { display: none !important; }
+
+        /* Full width main content */
+        main, body, html { width: 100% !important; overflow: visible !important; }
+
+        /* Cards print cleanly */
+        [style*="background: var(--bg-card)"],
+        [style*="background:var(--bg-card)"] {
+          background: #fff !important;
+          border: 1px solid #ccc !important;
+          color: #000 !important;
+        }
+
+        /* Dark backgrounds → white */
+        body { background: #fff !important; color: #000 !important; }
+
+        /* Page breaks */
+        .page-break { page-break-before: always; }
+
+        /* Hide map tiles (Leaflet), canvas elements */
+        .leaflet-container, canvas { display: none !important; }
+
+        /* Person cards in grid */
+        @page { margin: 1cm; }
+      }
     </style>
   </head>
   <body>
