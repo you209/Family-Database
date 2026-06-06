@@ -402,9 +402,130 @@ export default function App() {
 }
 
 function SettingsPage() {
+  const [stats, setStats] = useState(null);
+  const [statsErr, setStatsErr] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/export/stats")
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setStats(d))
+      .catch(() => setStatsErr(true));
+  }, []);
+
+  const cardStyle = {
+    background: "var(--bg-card)",
+    border: "1px solid var(--border)",
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 16,
+  };
+
+  const sectionTitleStyle = {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "var(--text-tertiary)",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    marginBottom: 12,
+  };
+
+  const btnStyle = {
+    display: "inline-block",
+    background: "var(--bg-sel)",
+    border: "1px solid var(--border)",
+    borderRadius: 7,
+    padding: "7px 14px",
+    fontSize: 13,
+    color: "var(--text-primary)",
+    cursor: "pointer",
+    marginRight: 8,
+    marginBottom: 8,
+  };
+
+  const accentBtnStyle = {
+    ...btnStyle,
+    background: "#1D9E75",
+    border: "1px solid #1D9E75",
+    color: "#fff",
+  };
+
+  const statRow = (label, value) => (
+    <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 13 }}>
+      <span style={{ color: "var(--text-secondary)" }}>{label}</span>
+      <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{value ?? "—"}</span>
+    </div>
+  );
+
+  const yearRange = stats?.date_range
+    ? (stats.date_range[0] && stats.date_range[1]
+        ? `${stats.date_range[0]} – ${stats.date_range[1]}`
+        : "—")
+    : null;
+
   return (
-    <div style={{ padding: 40, color: "var(--text-secondary)", fontSize: 14 }}>
-      Settings coming soon.
+    <div style={{ flex: 1, overflowY: "auto", padding: "32px 40px", maxWidth: 600 }}>
+      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24, color: "var(--text-primary)" }}>
+        Settings
+      </h1>
+
+      {/* Database stats */}
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>Database Statistics</div>
+        {statsErr && (
+          <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>Could not load stats.</div>
+        )}
+        {!stats && !statsErr && (
+          <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Loading…</div>
+        )}
+        {stats && (
+          <div>
+            {statRow("People", stats.total_persons)}
+            {statRow("Families", stats.total_families)}
+            {statRow("Events", stats.total_events)}
+            {statRow("Places", stats.total_places)}
+            {statRow("Photos / media", stats.total_media)}
+            {statRow("Year range", yearRange)}
+          </div>
+        )}
+      </div>
+
+      {/* Export */}
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>Export</div>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>
+          Download your family data in standard formats.
+        </div>
+        <button style={accentBtnStyle} onClick={() => window.open("/api/export/gedcom")}>
+          Download GEDCOM (.ged)
+        </button>
+        <button style={btnStyle} onClick={() => window.open("/api/export/csv/persons")}>
+          Download people CSV
+        </button>
+        <button style={btnStyle} onClick={() => window.open("/api/export/csv/events")}>
+          Download events CSV
+        </button>
+      </div>
+
+      {/* About */}
+      <div style={cardStyle}>
+        <div style={sectionTitleStyle}>About</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 22 }}>🌳</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)" }}>FamilyRoot</span>
+          <span style={{ fontSize: 12, color: "var(--text-tertiary)" }}>v0.1.0</span>
+        </div>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 10 }}>
+          A local-first family history application.
+        </div>
+        <a
+          href="https://github.com"
+          target="_blank"
+          rel="noreferrer"
+          style={{ ...btnStyle, textDecoration: "none" }}
+        >
+          GitHub
+        </a>
+      </div>
     </div>
   );
 }
