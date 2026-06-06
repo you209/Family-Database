@@ -31,6 +31,7 @@ from api_export import export_bp
 from api_search import search_bp
 from api_sources import sources_bp
 from api_notes import notes_bp
+from api_stats import stats_bp
 from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ app.register_blueprint(export_bp)
 app.register_blueprint(search_bp)
 app.register_blueprint(sources_bp)
 app.register_blueprint(notes_bp)
+app.register_blueprint(stats_bp)
 register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────

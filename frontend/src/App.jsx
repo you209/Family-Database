@@ -12,6 +12,7 @@ import PhotoPrismTab    from "./pages/PhotoPrismTab.jsx";
 import GrampsEngineTab from "./pages/GrampsEngineTab.jsx";
 import ToolsTab        from "./pages/ToolsTab.jsx";
 import OllamaTab       from "./pages/OllamaTab.jsx";
+import SourcesTab     from "./pages/SourcesTab.jsx";
 
 const API = "";
 
@@ -33,6 +34,7 @@ const NAV = [
       { id: "map",       label: "Places",         icon: "🗺"  },
       { id: "photos",    label: "Photos & media", icon: "🖼"  },
       { id: "faces",     label: "Faces",          icon: "🫣"  },
+      { id: "sources",   label: "Sources",        icon: "📚"  },
     ],
   },
   {
@@ -640,6 +642,7 @@ export default function App() {
         {page === "map"       && <MapTab      />}
         {page === "photos"    && <PhotosTab   />}
         {page === "faces"     && <FacesTab    />}
+        {page === "sources"   && <SourcesTab  />}
         {page === "gramps"        && <GrampsTab       />}
         {page === "grampsengine"  && <GrampsEngineTab />}
         {page === "photoprism"    && <PhotoPrismTab   />}
