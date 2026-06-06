@@ -782,6 +782,152 @@ function SharedAccessCard({ cardStyle, sectionTitleStyle, btnStyle, accentBtnSty
   );
 }
 
+// ── updates card ──────────────────────────────────────────────────────────────
+
+function UpdatesCard({ cardStyle, sectionTitleStyle, btnStyle, accentBtnStyle }) {
+  const [versionInfo, setVersionInfo] = useState(null);
+  const [checking, setChecking]       = useState(false);
+  const [updating, setUpdating]       = useState(false);
+  const [updateLog, setUpdateLog]     = useState([]);
+  const [updateDone, setUpdateDone]   = useState(false);
+  const esRef = useRef(null);
+
+  const fetchVersion = useCallback(() => {
+    setChecking(true);
+    fetch("/api/admin/version")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setVersionInfo(d); })
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, []);
+
+  useEffect(() => { fetchVersion(); }, [fetchVersion]);
+
+  const startUpdate = async () => {
+    setUpdating(true);
+    setUpdateLog([]);
+    setUpdateDone(false);
+    try {
+      await fetch("/api/admin/update", { method: "POST" });
+    } catch {
+      // ignore, SSE will report error
+    }
+    if (esRef.current) esRef.current.close();
+    const es = new EventSource("/api/admin/update/status");
+    esRef.current = es;
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if (d.done) {
+          setUpdateDone(true);
+          setUpdating(false);
+          es.close();
+        } else if (d.message) {
+          setUpdateLog(prev => [...prev, d.message]);
+        }
+      } catch { /* ignore */ }
+    };
+    es.onerror = () => {
+      setUpdating(false);
+      es.close();
+    };
+  };
+
+  return (
+    <div style={cardStyle}>
+      <div style={sectionTitleStyle}>Updates</div>
+
+      {!versionInfo && checking && (
+        <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Checking…</div>
+      )}
+
+      {versionInfo && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 8 }}>
+            Current version: <strong style={{ color: "var(--text-primary)" }}>v{versionInfo.current}</strong>
+          </div>
+
+          {versionInfo.update_available ? (
+            <div style={{
+              background: "rgba(29,158,117,0.12)",
+              border: "1px solid rgba(29,158,117,0.35)",
+              borderRadius: 8,
+              padding: "10px 14px",
+              marginBottom: 12,
+            }}>
+              <div style={{ fontSize: 13, color: "#1D9E75", fontWeight: 600, marginBottom: 4 }}>
+                v{versionInfo.latest} available
+              </div>
+              {versionInfo.changelog && (
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "pre-wrap", marginBottom: 8, maxHeight: 120, overflowY: "auto" }}>
+                  {versionInfo.changelog}
+                </div>
+              )}
+              <a
+                href={versionInfo.release_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 12, color: "var(--text-secondary)", marginRight: 12 }}
+              >
+                View release notes
+              </a>
+            </div>
+          ) : (
+            !checking && (
+              <div style={{ fontSize: 13, color: "var(--accent)", marginBottom: 8 }}>
+                You're up to date ✓
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <button style={btnStyle} onClick={fetchVersion} disabled={checking || updating}>
+          {checking ? "Checking…" : "Check for updates"}
+        </button>
+        {versionInfo?.update_available && (
+          <button style={accentBtnStyle} onClick={startUpdate} disabled={updating}>
+            {updating ? "Updating…" : "Update now"}
+          </button>
+        )}
+      </div>
+
+      {(updateLog.length > 0 || updating) && (
+        <div>
+          <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 6, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Update log
+          </div>
+          <div style={{
+            background: "var(--bg-app)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            padding: "10px 12px",
+            fontFamily: "monospace",
+            fontSize: 12,
+            color: "var(--text-secondary)",
+            maxHeight: 180,
+            overflowY: "auto",
+            marginBottom: 8,
+          }}>
+            {updateLog.map((line, i) => (
+              <div key={i} style={{ color: line.startsWith("Error") || line.startsWith("✗") ? "#e05c5c" : line.startsWith("✓") || line.includes("complete") ? "#1D9E75" : "var(--text-secondary)" }}>
+                {line}
+              </div>
+            ))}
+            {updating && <div style={{ color: "var(--text-tertiary)" }}>…</div>}
+          </div>
+          {updateDone && (
+            <div style={{ fontSize: 12, color: "#e8a020", fontWeight: 500 }}>
+              ⚠ The app will need to be restarted after updating.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const [stats, setStats] = useState(null);
   const [statsErr, setStatsErr] = useState(false);
@@ -962,6 +1108,9 @@ function SettingsPage() {
           🖨 Print this page
         </button>
       </div>
+
+      {/* Updates */}
+      <UpdatesCard cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} btnStyle={btnStyle} accentBtnStyle={accentBtnStyle} />
 
       {/* About */}
       <div style={cardStyle}>

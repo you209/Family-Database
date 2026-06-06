@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  familyroot:
+    build: .
+    container_name: familyroot
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./data:/app/data
+      - ./media:/app/media
+    environment:
+      - PORT=5050
+      - DEBUG=0
+      - SECRET_KEY=${SECRET_KEY:-changeme-set-in-env}
+    restart: unless-stopped
+    depends_on: []
+    networks:
+      - familynet
+
+  photoprism:
+    image: photoprism/photoprism:latest
+    container_name: photoprism
+    ports:
+      - "2342:2342"
+    volumes:
+      - photoprism-storage:/photoprism/storage
+      - ./media/originals:/photoprism/originals
+    environment:
+      PHOTOPRISM_ADMIN_PASSWORD: ${PHOTOPRISM_PASSWORD:-changeme}
+      PHOTOPRISM_SITE_URL: http://localhost:2342/
+      PHOTOPRISM_ORIGINALS_LIMIT: -1
+      PHOTOPRISM_HTTP_COMPRESSION: gzip
+      PHOTOPRISM_DATABASE_DRIVER: sqlite
+      PHOTOPRISM_DISABLE_TLS: true
+    restart: unless-stopped
+    networks:
+      - familynet
+
+  gramps-web:
+    image: ghcr.io/gramps-project/grampsweb:latest
+    container_name: gramps-web
+    ports:
+      - "5055:5000"
+    volumes:
+      - gramps-data:/app/data
+      - gramps-media:/app/media
+    environment:
+      GRAMPSWEB_TREE: FamilyRoot
+      GRAMPSWEB_SECRET_KEY: ${SECRET_KEY:-changeme-set-in-env}
+      GRAMPSWEB_USER_DB_URI: sqlite:////app/data/users.sqlite
+    restart: unless-stopped
+    networks:
+      - familynet
+
+volumes:
+  photoprism-storage:
+  gramps-data:
+  gramps-media:
+
+networks:
+  familynet:
+    driver: bridge
