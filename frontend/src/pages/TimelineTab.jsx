@@ -15,31 +15,31 @@ const API = "";
 function Spinner() {
   return (
     <div style={{
-      width: 20, height: 20, border: "2px solid var(--color-border-secondary)",
-      borderTopColor: "var(--color-accent)", borderRadius: "50%",
+      width: 20, height: 20, border: "2px solid var(--border)",
+      borderTopColor: "var(--accent)", borderRadius: "50%",
       animation: "spin 0.7s linear infinite",
     }} />
   );
 }
 
 const EVENT_COLORS = {
-  Birth:              ["#E6F1FB", "#185FA5"],
-  Death:              ["#F1EFE8", "#4A4840"],
-  Marriage:           ["#E1F5EE", "#0F6E56"],
-  Divorce:            ["#FAECE7", "#A03D1C"],
-  Burial:             ["#F1EFE8", "#4A4840"],
-  Baptism:            ["#EEEDFE", "#534AB7"],
-  Christening:        ["#EEEDFE", "#534AB7"],
-  Residence:          ["#FAEEDA", "#7A4B0A"],
-  Emigration:         ["#FAEEDA", "#7A4B0A"],
-  Immigration:        ["#FAEEDA", "#7A4B0A"],
-  Occupation:         ["#E6F1FB", "#185FA5"],
-  Education:          ["#E6F1FB", "#185FA5"],
-  "Military Service": ["#FAECE7", "#A03D1C"],
+  Birth:              ["rgba(59,130,246,0.18)",  "#60A5FA"],
+  Death:              ["rgba(100,100,100,0.18)", "#999"],
+  Marriage:           ["rgba(29,158,117,0.18)",  "#1D9E75"],
+  Divorce:            ["rgba(220,80,50,0.18)",   "#F08060"],
+  Burial:             ["rgba(100,100,100,0.18)", "#888"],
+  Baptism:            ["rgba(139,92,246,0.18)",  "#A78BFA"],
+  Christening:        ["rgba(139,92,246,0.18)",  "#A78BFA"],
+  Residence:          ["rgba(245,166,35,0.18)",  "#F5A623"],
+  Emigration:         ["rgba(245,166,35,0.18)",  "#F5A623"],
+  Immigration:        ["rgba(245,166,35,0.18)",  "#F5A623"],
+  Occupation:         ["rgba(59,130,246,0.18)",  "#60A5FA"],
+  Education:          ["rgba(59,130,246,0.18)",  "#60A5FA"],
+  "Military Service": ["rgba(220,80,50,0.18)",   "#F08060"],
 };
 
 function eventColor(type) {
-  return EVENT_COLORS[type] || ["#F1EFE8", "#6B6960"];
+  return EVENT_COLORS[type] || ["rgba(100,100,100,0.15)", "#888"];
 }
 
 // ── event pill ────────────────────────────────────────────────────────────────
@@ -88,8 +88,8 @@ function PhotoStrip({ year }) {
           style={{
             width: 56, height: 56, borderRadius: 6,
             overflow: "hidden", flexShrink: 0,
-            border: "0.5px solid var(--color-border-tertiary)",
-            background: "var(--color-background-tertiary)",
+            border: "0.5px solid var(--border)",
+            background: "var(--bg-sel)",
           }}
         >
           {p.thumb_url ? (
@@ -106,9 +106,9 @@ function PhotoStrip({ year }) {
       ))}
       {photos.length === 12 && (
         <div style={{
-          width: 56, height: 56, borderRadius: 6, border: "0.5px dashed var(--color-border-tertiary)",
+          width: 56, height: 56, borderRadius: 6, border: "0.5px dashed var(--border)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, color: "var(--color-text-tertiary)",
+          fontSize: 10, color: "var(--text-tertiary)",
         }}>more</div>
       )}
     </div>
@@ -126,11 +126,11 @@ function YearRow({ year, events, photoCount }) {
       <div style={{ width: 60, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
         <div style={{
           width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
-          background: events.length > 0 ? "var(--color-accent)" : "var(--color-border-primary)",
-          border: `2px solid ${events.length > 0 ? "var(--color-accent-light)" : "var(--color-background-primary)"}`,
+          background: events.length > 0 ? "var(--accent)" : "var(--border)",
+          border: `2px solid ${events.length > 0 ? "rgba(29,158,117,0.18)" : "var(--bg-app)"}`,
           marginTop: 4,
         }} />
-        <div style={{ flex: 1, width: 1.5, background: "var(--color-border-tertiary)" }} />
+        <div style={{ flex: 1, width: 1.5, background: "var(--border)" }} />
       </div>
 
       {/* Content */}
@@ -143,21 +143,21 @@ function YearRow({ year, events, photoCount }) {
           }}
           onClick={() => (events.length > 0 || photoCount > 0) && setOpen(o => !o)}
         >
-          <span style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)", userSelect: "none" }}>
+          <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", userSelect: "none" }}>
             {year}
           </span>
           {events.length > 0 && (
-            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
               {events.length} event{events.length !== 1 ? "s" : ""}
             </span>
           )}
           {photoCount > 0 && (
-            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
               {photoCount} photo{photoCount !== 1 ? "s" : ""}
             </span>
           )}
           {(events.length > 0 || photoCount > 0) && (
-            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)", userSelect: "none" }}>
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)", userSelect: "none" }}>
               {open ? "▲" : "▼"}
             </span>
           )}
@@ -193,19 +193,19 @@ function DecadeSection({ decade, yearsData, photosByYear }) {
         style={{
           display: "flex", alignItems: "center", gap: 10,
           padding: "8px 0", cursor: "pointer", userSelect: "none",
-          borderBottom: "0.5px solid var(--color-border-tertiary)",
+          borderBottom: "0.5px solid var(--border)",
           marginBottom: 12,
         }}
       >
-        <span style={{ fontSize: 16, fontWeight: 600, color: "var(--color-text-primary)" }}>
+        <span style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}>
           {decade}s
         </span>
-        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
           {totalEvents > 0 && `${totalEvents} events`}
           {totalEvents > 0 && totalPhotos > 0 && " · "}
           {totalPhotos > 0 && `${totalPhotos} photos`}
         </span>
-        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--color-text-tertiary)" }}>
+        <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-tertiary)" }}>
           {open ? "▲" : "▼"}
         </span>
       </div>
@@ -264,13 +264,13 @@ export default function TimelineTab() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
       <div style={{
-        padding: "12px 20px", borderBottom: "0.5px solid var(--color-border-tertiary)",
-        background: "var(--color-background-secondary)",
+        padding: "12px 20px", borderBottom: "0.5px solid var(--border)",
+        background: "var(--bg-card)",
         flexShrink: 0,
       }}>
         <span style={{ fontSize: 14, fontWeight: 500 }}>Family timeline</span>
         {data?.stats && (
-          <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginLeft: 10 }}>
+          <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 10 }}>
             {data.stats.earliest_year && data.stats.latest_year
               ? `${data.stats.earliest_year} – ${data.stats.latest_year}`
               : ""}
@@ -286,7 +286,7 @@ export default function TimelineTab() {
         )}
 
         {error && (
-          <div style={{ marginTop: 40, padding: 16, background: "#FAECE7", borderRadius: 8, fontSize: 13, color: "#A03D1C" }}>
+          <div style={{ marginTop: 40, padding: 16, background: "rgba(220,80,50,0.15)", borderRadius: 8, fontSize: 13, color: "#F08060" }}>
             Could not load timeline: {error}.
             <br /><br />
             Make sure the backend is running and the <code>/api/timeline/</code> endpoint exists.
@@ -294,7 +294,7 @@ export default function TimelineTab() {
         )}
 
         {!loading && !error && decades.length === 0 && (
-          <div style={{ textAlign: "center", marginTop: 80, color: "var(--color-text-tertiary)" }}>
+          <div style={{ textAlign: "center", marginTop: 80, color: "var(--text-tertiary)" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>📅</div>
             <div style={{ fontSize: 14, marginBottom: 6 }}>No timeline data yet</div>
             <div style={{ fontSize: 12 }}>
