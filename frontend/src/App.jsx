@@ -235,6 +235,9 @@ function Sidebar({ active, onNav, dbName, collapsed }) {
         )}
       </div>
 
+      {/* Global search — only when sidebar is expanded */}
+      {!collapsed && <GlobalSearch onNav={onNav} />}
+
       {/* Nav sections */}
       <nav style={{ flex: 1, overflowY: "auto", padding: collapsed ? "4px 0" : "4px 10px" }}>
         {NAV.map(group => (
