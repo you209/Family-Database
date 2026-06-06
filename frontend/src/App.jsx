@@ -476,11 +476,102 @@ function MobileHeader({ active, onNav, dbName }) {
   );
 }
 
+// ── PIN lock screen ───────────────────────────────────────────────────────────
+
+function PinScreen({ onUnlocked }) {
+  const [pin, setPin]         = useState("");
+  const [error, setError]     = useState("");
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const submit = async () => {
+    if (pin.length !== 6) { setError("Enter all 6 digits"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const r = await fetch(`${API}/api/share/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+        credentials: "same-origin",
+      });
+      if (r.ok) {
+        onUnlocked();
+      } else {
+        setError("Incorrect PIN. Please try again.");
+        setPin("");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "var(--bg-app)",
+      zIndex: 9999,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div style={{
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: 16,
+        padding: "40px 36px",
+        width: 340,
+        textAlign: "center",
+      }}>
+        <div style={{ fontSize: 36, marginBottom: 8 }}>🌳</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>FamilyRoot</div>
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 28 }}>
+          Enter PIN to view family records
+        </div>
+        <input
+          ref={inputRef}
+          type="password"
+          value={pin}
+          maxLength={6}
+          onChange={e => { setPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+          onKeyDown={e => { if (e.key === "Enter") submit(); }}
+          placeholder="••••••"
+          style={{
+            width: "100%", textAlign: "center", fontSize: 28,
+            letterSpacing: "0.3em", padding: "10px 12px",
+            borderRadius: 8, border: "1px solid var(--border)",
+            background: "var(--bg-sel)", color: "var(--text-primary)",
+            marginBottom: 12, boxSizing: "border-box",
+          }}
+        />
+        {error && (
+          <div style={{ fontSize: 12, color: "#F08060", marginBottom: 10 }}>{error}</div>
+        )}
+        <button
+          onClick={submit}
+          disabled={loading}
+          style={{
+            width: "100%", padding: "10px 0", fontSize: 14, fontWeight: 600,
+            background: "#1D9E75", color: "#fff", border: "none", borderRadius: 8,
+            cursor: loading ? "default" : "pointer",
+          }}
+        >
+          {loading ? "Checking…" : "Unlock"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [page,   setPage]   = useState("people");
-  const [dbName, setDbName] = useState(null);
+  const [page,        setPage]        = useState("people");
+  const [dbName,      setDbName]      = useState(null);
+  const [pinRequired, setPinRequired] = useState(false);
+  const [pinUnlocked, setPinUnlocked] = useState(false);
   const width = useWindowWidth();
 
   const isMobile  = width < 768;
@@ -488,14 +579,42 @@ export default function App() {
   // isDesktop = width >= 1024
 
   useEffect(() => {
+    const loadApp = () => {
+      fetch(`${API}/api/health`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => d && setDbName("Family database"))
+        .catch(() => {});
+    };
+
+    fetch(`${API}/api/share/status`)
+      .then(r => r.ok ? r.json() : null)
+      .then(async d => {
+        if (d?.enabled) {
+          const healthResp = await fetch(`${API}/api/health`, { credentials: "same-origin" });
+          if (healthResp.status === 401) {
+            setPinRequired(true);
+            return;
+          }
+        }
+        loadApp();
+      })
+      .catch(() => loadApp());
+  }, []);
+
+  const handleUnlocked = () => {
+    setPinRequired(false);
+    setPinUnlocked(true);
     fetch(`${API}/api/health`)
       .then(r => r.ok ? r.json() : null)
       .then(d => d && setDbName("Family database"))
       .catch(() => {});
-  }, []);
+  };
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      {/* PIN overlay */}
+      {pinRequired && !pinUnlocked && <PinScreen onUnlocked={handleUnlocked} />}
+
       {/* Sidebar: hidden on mobile, collapsed on tablet, full on desktop */}
       {!isMobile && (
         <Sidebar active={page} onNav={setPage} dbName={dbName} collapsed={isTablet} />
@@ -690,6 +809,9 @@ function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* Shared Access */}
+      <SharedAccessCard cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} btnStyle={btnStyle} accentBtnStyle={accentBtnStyle} />
 
       {/* Export */}
       <div style={cardStyle}>
