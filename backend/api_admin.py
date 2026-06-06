@@ -29,14 +29,22 @@ File naming: YYYY-MM-DD-NNN.ext
   NNN = 3-digit sequence within the folder, zero-padded
 """
 
+import io
 import json
 import os
 import re
 import shutil
+import subprocess
+import sys
+import tempfile
 import threading
+import time as _time
+import urllib.request
+import zipfile
+from datetime import date
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, jsonify, request, send_file
 from database import get_db, rows_to_list, row_to_dict
 
 admin_bp = Blueprint("admin", __name__)
@@ -369,5 +377,217 @@ def admin_ingest_status():
             time.sleep(0.5)
         final = json.dumps({"done": True, "stats": _ingest_status["stats"]})
         yield f"data: {final}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+# ── backup & restore ──────────────────────────────────────────────────────────
+
+@admin_bp.route("/api/admin/backup")
+def admin_backup():
+    from database import DB_PATH
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Add database
+        db_path = Path(DB_PATH)
+        if db_path.exists():
+            zf.write(db_path, "familyroot.db")
+
+        # Add media files
+        media_root = MEDIA_ROOT
+        if media_root.exists():
+            for f in media_root.rglob("*"):
+                if f.is_file():
+                    zf.write(f, str(f.relative_to(media_root.parent)))
+
+    buf.seek(0)
+    filename = f"familyroot-backup-{date.today().isoformat()}.zip"
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
+@admin_bp.route("/api/admin/restore", methods=["POST"])
+def admin_restore():
+    from database import DB_PATH
+
+    if _ingest_status.get("running"):
+        return jsonify({"error": "Ingestion is currently running; stop it before restoring"}), 409
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded (field name: 'file')"}), 400
+
+    uploaded = request.files["file"]
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = tmp.name
+        uploaded.save(tmp_path)
+
+    try:
+        with zipfile.ZipFile(tmp_path, "r") as zf:
+            names = zf.namelist()
+            if "familyroot.db" not in names:
+                return jsonify({"error": "Invalid backup: zip does not contain familyroot.db"}), 400
+
+            # Restore database
+            db_path = Path(DB_PATH)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open("familyroot.db") as src, open(db_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+            # Restore media files
+            media_count = 0
+            media_parent = MEDIA_ROOT.parent
+            for name in names:
+                if name == "familyroot.db":
+                    continue
+                dest = media_parent / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(name) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                media_count += 1
+
+    finally:
+        os.unlink(tmp_path)
+
+    return jsonify({"ok": True, "restored": {"db": True, "media_files": media_count}})
+
+
+# ── auto-update ───────────────────────────────────────────────────────────────
+
+_REPO_ROOT = Path(__file__).parent.parent
+_VERSION_FILE = _REPO_ROOT / "VERSION"
+_GITHUB_RELEASES_URL = "https://api.github.com/repos/you209/Family-Database/releases/latest"
+
+_version_cache = {"ts": 0, "data": None}
+_update_log: list[str] = []
+_update_running = False
+_update_done = False
+
+
+def _read_current_version() -> str:
+    try:
+        return _VERSION_FILE.read_text().strip()
+    except Exception:
+        return "0.1.0"
+
+
+def _fetch_latest_release() -> dict:
+    now = _time.time()
+    if _version_cache["data"] is not None and (now - _version_cache["ts"]) < 3600:
+        return _version_cache["data"]
+    try:
+        req = urllib.request.Request(
+            _GITHUB_RELEASES_URL,
+            headers={"User-Agent": "FamilyRoot-AutoUpdate/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        result = {
+            "tag_name": data.get("tag_name", ""),
+            "html_url": data.get("html_url", ""),
+            "body": data.get("body", ""),
+        }
+        _version_cache["ts"] = now
+        _version_cache["data"] = result
+        return result
+    except Exception:
+        return {}
+
+
+@admin_bp.route("/api/admin/version")
+def admin_version():
+    current = _read_current_version()
+    release = _fetch_latest_release()
+    latest_tag = release.get("tag_name", "").lstrip("v") if release else None
+    update_available = bool(latest_tag and latest_tag != current)
+    return jsonify({
+        "current": current,
+        "latest": latest_tag or None,
+        "update_available": update_available,
+        "release_url": release.get("html_url", "https://github.com/you209/Family-Database/releases/latest"),
+        "changelog": release.get("body", ""),
+    })
+
+
+@admin_bp.route("/api/admin/update", methods=["POST"])
+def admin_update():
+    global _update_running, _update_done, _update_log
+    if _update_running:
+        return jsonify({"error": "Update already running"}), 409
+
+    _update_log = []
+    _update_done = False
+
+    def _run():
+        global _update_running, _update_done
+        _update_running = True
+        log = _update_log
+        try:
+            log.append("Pulling latest code...")
+            # Detect current branch
+            try:
+                branch = subprocess.check_output(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=str(_REPO_ROOT), stderr=subprocess.STDOUT
+                ).decode().strip() or "main"
+            except Exception:
+                branch = "main"
+
+            result = subprocess.run(
+                ["git", "pull", "origin", branch],
+                cwd=str(_REPO_ROOT),
+                capture_output=True, text=True
+            )
+            if result.returncode != 0:
+                log.append(f"Error: {result.stderr.strip() or result.stdout.strip()}")
+                log.append("__done__")
+                return
+
+            log.append("Installing dependencies...")
+            pip_exec = str(Path(sys.executable).parent / "pip")
+            req_file = str(_REPO_ROOT / "backend" / "requirements.txt")
+            result2 = subprocess.run(
+                [pip_exec, "install", "-r", req_file],
+                capture_output=True, text=True
+            )
+            if result2.returncode != 0:
+                log.append(f"Error: {result2.stderr.strip() or result2.stdout.strip()}")
+                log.append("__done__")
+                return
+
+            log.append("Update complete. Restart to apply.")
+            log.append("__done__")
+        except Exception as e:
+            log.append(f"Error: {e}")
+            log.append("__done__")
+        finally:
+            _update_running = False
+            _update_done = True
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@admin_bp.route("/api/admin/update/status")
+def admin_update_status():
+    def generate():
+        sent = 0
+        while True:
+            while sent < len(_update_log):
+                line = _update_log[sent]
+                sent += 1
+                if line == "__done__":
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                    return
+                yield f"data: {json.dumps({'message': line})}\n\n"
+            if _update_done and sent >= len(_update_log):
+                yield f"data: {json.dumps({'done': True})}\n\n"
+                return
+            _time.sleep(0.2)
 
     return Response(generate(), mimetype="text/event-stream")

@@ -18,8 +18,8 @@ function Spinner({ size = 18 }) {
   return (
     <div style={{
       width: size, height: size,
-      border: `2px solid var(--color-border-secondary)`,
-      borderTopColor: "var(--color-accent)",
+      border: `2px solid var(--border)`,
+      borderTopColor: "var(--accent)",
       borderRadius: "50%",
       animation: "spin 0.7s linear infinite",
       flexShrink: 0,
@@ -27,9 +27,9 @@ function Spinner({ size = 18 }) {
   );
 }
 
-function ProgressBar({ pct, color = "var(--color-accent)" }) {
+function ProgressBar({ pct, color = "var(--accent)" }) {
   return (
-    <div style={{ height: 4, background: "var(--color-background-tertiary)", borderRadius: 2, overflow: "hidden", margin: "6px 0" }}>
+    <div style={{ height: 4, background: "var(--bg-sel)", borderRadius: 2, overflow: "hidden", margin: "6px 0" }}>
       <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, transition: "width 0.3s" }} />
     </div>
   );
@@ -37,8 +37,8 @@ function ProgressBar({ pct, color = "var(--color-accent)" }) {
 
 function SectionCard({ title, children }) {
   return (
-    <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
-      <div style={{ padding: "11px 14px", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-secondary)" }}>
+    <div style={{ border: "0.5px solid var(--border)", borderRadius: 10, overflow: "hidden", marginBottom: 16 }}>
+      <div style={{ padding: "11px 14px", borderBottom: "0.5px solid var(--border)", background: "var(--bg-card)" }}>
         <span style={{ fontSize: 13, fontWeight: 500 }}>{title}</span>
       </div>
       <div style={{ padding: 14 }}>{children}</div>
@@ -53,10 +53,10 @@ function LogBox({ lines, running, logRef }) {
       ref={logRef}
       style={{
         marginTop: 10, padding: "8px 10px",
-        background: "var(--color-background-secondary)",
-        border: "0.5px solid var(--color-border-tertiary)",
+        background: "var(--bg-card)",
+        border: "0.5px solid var(--border)",
         borderRadius: 6, fontFamily: "var(--font-mono)",
-        fontSize: 11, color: "var(--color-text-secondary)",
+        fontSize: 11, color: "var(--text-secondary)",
         lineHeight: 1.75, maxHeight: 200, overflowY: "auto",
       }}
     >
@@ -65,7 +65,7 @@ function LogBox({ lines, running, logRef }) {
           {l}
         </div>
       ))}
-      {running && <div style={{ color: "var(--color-accent)" }}>▌</div>}
+      {running && <div style={{ color: "var(--accent)" }}>▌</div>}
     </div>
   );
 }
@@ -88,22 +88,22 @@ function TreeNode({ node, depth = 0 }) {
           borderRadius: 4,
           fontSize: 12,
         }}
-        onMouseEnter={e => { if (hasChildren) e.currentTarget.style.background = "var(--color-background-secondary)"; }}
+        onMouseEnter={e => { if (hasChildren) e.currentTarget.style.background = "var(--bg-card)"; }}
         onMouseLeave={e => { e.currentTarget.style.background = ""; }}
       >
-        <span style={{ width: 14, flexShrink: 0, color: "var(--color-text-tertiary)", fontSize: 10, userSelect: "none" }}>
+        <span style={{ width: 14, flexShrink: 0, color: "var(--text-tertiary)", fontSize: 10, userSelect: "none" }}>
           {hasChildren ? (open ? "▾" : "▸") : ""}
         </span>
         <span style={{ fontSize: 14, flexShrink: 0 }}>{hasChildren ? "📁" : ""}</span>
         <span style={{
           flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          color: depth === 0 ? "var(--color-text-primary)" : "var(--color-text-secondary)",
+          color: depth === 0 ? "var(--text-primary)" : "var(--text-secondary)",
           fontWeight: depth <= 1 ? 500 : 400,
         }}>
           {node.name}
         </span>
         {node.files > 0 && (
-          <span style={{ fontSize: 10, color: "var(--color-text-tertiary)", flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>
             {node.files}
           </span>
         )}
@@ -132,13 +132,13 @@ function FolderTree() {
   return (
     <div style={{
       width: 260, flexShrink: 0,
-      borderRight: "0.5px solid var(--color-border-tertiary)",
+      borderRight: "0.5px solid var(--border)",
       display: "flex", flexDirection: "column",
       overflow: "hidden",
     }}>
       <div style={{
-        padding: "10px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)",
-        background: "var(--color-background-secondary)",
+        padding: "10px 12px", borderBottom: "0.5px solid var(--border)",
+        background: "var(--bg-card)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexShrink: 0,
       }}>
@@ -152,7 +152,7 @@ function FolderTree() {
           </div>
         )}
         {!loading && !tree?.children?.length && (
-          <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: "var(--color-text-tertiary)" }}>
+          <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: "var(--text-tertiary)" }}>
             No files yet.<br />Ingest photos below.
           </div>
         )}
@@ -217,7 +217,7 @@ function IngestPanel() {
 
   return (
     <SectionCard title="Ingest photos from folder">
-      <p style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.6 }}>
         Point to any folder on this machine. FamilyRoot copies photos into{" "}
         <code style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>media/originals/</code>,
         extracts EXIF, generates thumbnails, and optionally detects faces.
@@ -242,7 +242,7 @@ function IngestPanel() {
           disabled={running}
         />
         Run face detection &amp; clustering after ingest
-        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>(slow on Pi — can uncheck)</span>
+        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>(slow on Pi — can uncheck)</span>
       </label>
 
       <button
@@ -258,7 +258,7 @@ function IngestPanel() {
         <div style={{ marginTop: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {running && <Spinner size={14} />}
-            <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{label}</span>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{label}</span>
           </div>
           <ProgressBar pct={pct} />
         </div>
@@ -267,14 +267,14 @@ function IngestPanel() {
       {done && result && (
         <div style={{
           marginTop: 10, padding: "10px 12px",
-          background: "var(--color-accent-light)",
+          background: "rgba(29,158,117,0.18)",
           borderRadius: 6, fontSize: 12,
           display: "flex", flexWrap: "wrap", gap: 14,
         }}>
           {Object.entries(result).filter(([, v]) => v > 0).map(([k, v]) => (
             <span key={k}>
               <strong>{v.toLocaleString()}</strong>{" "}
-              <span style={{ color: "var(--color-text-secondary)" }}>{k.replace(/_/g, " ")}</span>
+              <span style={{ color: "var(--text-secondary)" }}>{k.replace(/_/g, " ")}</span>
             </span>
           ))}
         </div>
@@ -335,7 +335,7 @@ function ReorganizePanel({ onDone }) {
 
   return (
     <SectionCard title="Reorganize &amp; rename files">
-      <p style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 8, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8, lineHeight: 1.6 }}>
         Sorts every photo into{" "}
         <code style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>year / event-or-place / </code>
         folders and renames files to{" "}
@@ -344,22 +344,22 @@ function ReorganizePanel({ onDone }) {
 
       {/* Structure legend */}
       <div style={{
-        background: "var(--color-background-secondary)",
-        border: "0.5px solid var(--color-border-tertiary)",
+        background: "var(--bg-card)",
+        border: "0.5px solid var(--border)",
         borderRadius: 6, padding: "8px 12px", marginBottom: 12,
         fontFamily: "var(--font-mono)", fontSize: 11,
-        color: "var(--color-text-secondary)", lineHeight: 1.9,
+        color: "var(--text-secondary)", lineHeight: 1.9,
       }}>
         <div>originals/</div>
         <div>&nbsp;&nbsp;1948/</div>
         <div>&nbsp;&nbsp;&nbsp;&nbsp;Marriage - John and Mary/</div>
-        <div style={{ color: "var(--color-accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1948-06-12-001.jpg</div>
+        <div style={{ color: "var(--accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1948-06-12-001.jpg</div>
         <div>&nbsp;&nbsp;&nbsp;&nbsp;Edinburgh/</div>
-        <div style={{ color: "var(--color-accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1948-00-00-001.jpg</div>
+        <div style={{ color: "var(--accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1948-00-00-001.jpg</div>
         <div>&nbsp;&nbsp;&nbsp;&nbsp;unsorted/</div>
-        <div style={{ color: "var(--color-accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1948-00-00-001.jpg</div>
+        <div style={{ color: "var(--accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1948-00-00-001.jpg</div>
         <div>&nbsp;&nbsp;undated/unsorted/</div>
-        <div style={{ color: "var(--color-accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;0000-00-00-001.jpg</div>
+        <div style={{ color: "var(--accent)" }}>&nbsp;&nbsp;&nbsp;&nbsp;0000-00-00-001.jpg</div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -391,20 +391,20 @@ function ReorganizePanel({ onDone }) {
       {done && result && (
         <div style={{
           marginTop: 10, padding: "10px 12px",
-          background: dryRun ? "var(--color-background-secondary)" : "var(--color-accent-light)",
+          background: dryRun ? "var(--bg-card)" : "rgba(29,158,117,0.18)",
           borderRadius: 6, fontSize: 12,
           display: "flex", flexWrap: "wrap", gap: 14,
         }}>
           {Object.entries(result).map(([k, v]) => (
             <span key={k}>
               <strong>{v.toLocaleString()}</strong>{" "}
-              <span style={{ color: k === "errors" ? "#993C1D" : "var(--color-text-secondary)" }}>
+              <span style={{ color: k === "errors" ? "#993C1D" : "var(--text-secondary)" }}>
                 {k.replace(/_/g, " ")}
               </span>
             </span>
           ))}
           {dryRun && (
-            <span style={{ color: "var(--color-text-tertiary)", fontSize: 11 }}>
+            <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}>
               (dry run — nothing moved)
             </span>
           )}
@@ -427,7 +427,7 @@ export default function AdminTab() {
       {/* Right: panels */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px", maxWidth: 700 }}>
         <h2 style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>Admin</h2>
-        <p style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 20, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.6 }}>
           Ingest new photos from any folder on this machine, then reorganize
           the library into a tidy year → event → place folder structure with
           consistent file names.

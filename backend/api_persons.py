@@ -41,14 +41,20 @@ def list_persons():
             f"SELECT COUNT(*) FROM persons {where_sql}", params
         ).fetchone()[0]
         rows = rows_to_list(conn.execute(
-            f"""SELECT id, gramps_id, gender, name_given, name_surname,
-                       name_suffix, name_prefix, birth_year, death_year,
-                       birth_place, is_living, privacy
-                FROM persons {where_sql}
-                ORDER BY name_surname ASC, name_given ASC
+            f"""SELECT p.id, p.gramps_id, p.gender, p.name_given, p.name_surname,
+                       p.name_suffix, p.name_prefix, p.birth_year, p.death_year,
+                       p.birth_place, p.is_living, p.privacy, p.primary_media_id,
+                       m.path AS portrait_path
+                FROM persons p
+                LEFT JOIN media m ON m.id = p.primary_media_id
+                {where_sql}
+                ORDER BY p.name_surname ASC, p.name_given ASC
                 LIMIT ? OFFSET ?""",
             params + [per_page, offset]
         ).fetchall())
+
+    for r in rows:
+        r["portrait_url"] = f"/thumbnails/{r.pop('portrait_path')}" if r.get("portrait_path") else None
 
     return jsonify({
         "persons": rows,
@@ -363,3 +369,36 @@ def get_person_tags(person_id):
             WHERE ot.object_type = 'person' AND ot.object_id = ?
         """, (person_id,)).fetchall()
     return jsonify({"tags": [r[0] for r in rows]})
+
+
+@persons_bp.route("/api/persons/<int:person_id>/portrait", methods=["POST"])
+def set_portrait(person_id):
+    """Set a media item as the person's portrait photo."""
+    data     = request.get_json() or {}
+    media_id = data.get("media_id")
+    if not media_id:
+        return jsonify({"error": "media_id required"}), 400
+
+    with get_db() as conn:
+        if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+            abort(404)
+        if not conn.execute("SELECT 1 FROM media WHERE id=?", (media_id,)).fetchone():
+            return jsonify({"error": "media not found"}), 404
+        conn.execute(
+            "UPDATE persons SET primary_media_id=? WHERE id=?",
+            (media_id, person_id)
+        )
+        # Resolve thumb URL
+        row = conn.execute("SELECT path FROM media WHERE id=?", (media_id,)).fetchone()
+        thumb = f"/thumbnails/{row['path']}" if row else None
+
+    return jsonify({"ok": True, "portrait_url": thumb})
+
+
+@persons_bp.route("/api/persons/<int:person_id>/portrait", methods=["DELETE"])
+def remove_portrait(person_id):
+    with get_db() as conn:
+        if not conn.execute("SELECT 1 FROM persons WHERE id=?", (person_id,)).fetchone():
+            abort(404)
+        conn.execute("UPDATE persons SET primary_media_id=NULL WHERE id=?", (person_id,))
+    return jsonify({"ok": True})

@@ -249,29 +249,29 @@ function PersonPanel({ person, onClose, onGroupChange }) {
   return (
     <div style={{
       width: 300, flexShrink: 0,
-      borderLeft: "0.5px solid var(--color-border-tertiary)",
+      borderLeft: "0.5px solid var(--border)",
       display: "flex", flexDirection: "column",
-      background: "var(--color-background-primary)",
+      background: "var(--bg-app)",
       overflow: "hidden",
     }}>
       {/* Header stripe in group colour */}
       <div style={{
         padding: "10px 14px",
-        borderBottom: "0.5px solid var(--color-border-tertiary)",
-        background: c.light,
+        borderBottom: "0.5px solid var(--border)",
+        background: `${c.fill}22`,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexShrink: 0,
       }}>
         <div>
           <div style={{ fontWeight: 500, fontSize: 14 }}>{fullName}</div>
-          {years && <div style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{years}</div>}
+          {years && <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{years}</div>}
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "var(--color-text-secondary)" }}>✕</button>
+        <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "var(--text-secondary)" }}>✕</button>
       </div>
 
       {/* Group picker */}
-      <div style={{ padding: "10px 14px", borderBottom: "0.5px solid var(--color-border-tertiary)", flexShrink: 0 }}>
-        <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+      <div style={{ padding: "10px 14px", borderBottom: "0.5px solid var(--border)", flexShrink: 0 }}>
+        <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
           Relationship
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -285,9 +285,9 @@ function PersonPanel({ person, onClose, onGroupChange }) {
                 disabled={saving}
                 style={{
                   fontSize: 12, padding: "4px 10px",
-                  background: active ? gc.fill : "var(--color-background-secondary)",
-                  color:      active ? "#fff"  : "var(--color-text-secondary)",
-                  border:     `1.5px solid ${active ? gc.fill : "var(--color-border-secondary)"}`,
+                  background: active ? gc.fill : "var(--bg-card)",
+                  color:      active ? "#fff"  : "var(--text-secondary)",
+                  border:     `1.5px solid ${active ? gc.fill : "var(--border)"}`,
                   borderRadius: 20,
                   cursor: "pointer",
                   transition: "all 0.12s",
@@ -301,7 +301,7 @@ function PersonPanel({ person, onClose, onGroupChange }) {
             <button
               onClick={() => setGroup(null)}
               disabled={saving}
-              style={{ fontSize: 11, padding: "4px 8px", color: "var(--color-text-tertiary)", background: "none", border: "none", cursor: "pointer" }}
+              style={{ fontSize: 11, padding: "4px 8px", color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer" }}
             >
               clear
             </button>
@@ -310,8 +310,8 @@ function PersonPanel({ person, onClose, onGroupChange }) {
       </div>
 
       {/* Photo count */}
-      <div style={{ padding: "6px 14px", borderBottom: "0.5px solid var(--color-border-tertiary)", flexShrink: 0 }}>
-        <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+      <div style={{ padding: "6px 14px", borderBottom: "0.5px solid var(--border)", flexShrink: 0 }}>
+        <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
           {person.photo_count} photo{person.photo_count !== 1 ? "s" : ""}
         </span>
       </div>
@@ -319,7 +319,7 @@ function PersonPanel({ person, onClose, onGroupChange }) {
       {/* Photo grid */}
       <div style={{ flex: 1, overflowY: "auto", padding: 10 }}>
         {photos.length === 0 && (
-          <div style={{ textAlign: "center", marginTop: 40, fontSize: 12, color: "var(--color-text-tertiary)" }}>
+          <div style={{ textAlign: "center", marginTop: 40, fontSize: 12, color: "var(--text-tertiary)" }}>
             No photos yet
           </div>
         )}
@@ -327,8 +327,8 @@ function PersonPanel({ person, onClose, onGroupChange }) {
           {photos.map(p => (
             <div key={p.id} title={p.filename} style={{
               aspectRatio: "1", borderRadius: 5, overflow: "hidden",
-              background: "var(--color-background-tertiary)",
-              border: "0.5px solid var(--color-border-tertiary)",
+              background: "var(--bg-sel)",
+              border: "0.5px solid var(--border)",
             }}>
               {p.thumb_url
                 ? <img src={p.thumb_url} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
@@ -501,23 +501,23 @@ export default function BubbleTab() {
       {/* Toolbar */}
       <div style={{
         display: "flex", alignItems: "center", gap: 14, padding: "8px 16px",
-        borderBottom: "0.5px solid var(--color-border-tertiary)",
-        background: "var(--color-background-secondary)", flexShrink: 0,
+        borderBottom: "0.5px solid var(--border)",
+        background: "var(--bg-card)", flexShrink: 0,
       }}>
         <span style={{ fontSize: 13, fontWeight: 500 }}>Family bubble board</span>
-        <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+        <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
           Size = photo count · click to assign group · drag to rearrange
         </span>
 
         {/* Legend */}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {[["family","Family"],["colleague","Work colleague"],["friend","Friend"]].map(([g, label]) => (
-            <span key={g} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--color-text-secondary)" }}>
+            <span key={g} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-secondary)" }}>
               <span style={{ width: 11, height: 11, borderRadius: "50%", background: GROUP_COLOR[g].fill, display: "inline-block", flexShrink: 0 }} />
               {label}
             </span>
           ))}
-          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--color-text-secondary)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-secondary)" }}>
             <span style={{ width: 11, height: 11, borderRadius: "50%", background: GROUP_COLOR.none.fill, display: "inline-block", flexShrink: 0 }} />
             Unassigned
           </span>
@@ -538,13 +538,13 @@ export default function BubbleTab() {
           <div style={{
             position: "absolute", inset: 0, zIndex: 10,
             display: "flex", alignItems: "center", justifyContent: "center",
-            background: "#111814", flexDirection: "column", gap: 12,
-            fontSize: 13, color: "#aaa",
+            background: "var(--bg-app)", flexDirection: "column", gap: 12,
+            fontSize: 13, color: "var(--text-secondary)",
           }}>
             <div style={{
               width: 28, height: 28,
-              border: "2.5px solid #333",
-              borderTopColor: "#1D9E75",
+              border: "2.5px solid var(--border)",
+              borderTopColor: "var(--accent)",
               borderRadius: "50%",
               animation: "spin 0.7s linear infinite",
             }} />
@@ -554,7 +554,7 @@ export default function BubbleTab() {
 
         <canvas
           ref={canvasRef}
-          style={{ flex: 1, display: "block", background: "#111814", touchAction: "none" }}
+          style={{ flex: 1, display: "block", background: "var(--bg-app)", touchAction: "none" }}
           onMouseMove={onMouseMove}
           onMouseDown={onMouseDown}
           onMouseUp={onMouseUp}

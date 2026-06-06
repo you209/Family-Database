@@ -602,8 +602,9 @@ export default function PeopleTab() {
           return p;
         }));
 
-        // Fetch thumb_url for each person (first photo)
+        // Use portrait_url from API, fall back to first tagged photo
         const withThumbs = await Promise.all(tagged.map(async p => {
+          if (p.portrait_url) { p.thumb_url = p.portrait_url; return p; }
           try {
             const pr = await fetch(`${API}/api/photos/by-person/${p.id}?limit=1`);
             if (pr.ok) {

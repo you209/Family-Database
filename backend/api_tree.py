@@ -134,6 +134,189 @@ def get_descendants(person_id):
 
 # ── life story ────────────────────────────────────────────────────────────────
 
+# ── relationship calculator ───────────────────────────────────────────────────
+
+def _relationship_label(gen_a, gen_b):
+    """Return a human-readable relationship label given generation distances from a common ancestor."""
+    if gen_a == 0 and gen_b == 0:
+        return "same person"
+    if gen_a == 0:
+        return "grandparent" if gen_b >= 2 else "parent"
+    if gen_b == 0:
+        return "grandchild" if gen_a >= 2 else "child"
+    if gen_a == 1 and gen_b == 1:
+        return "sibling"
+    if min(gen_a, gen_b) == 1:
+        deeper = max(gen_a, gen_b)
+        if gen_a == 1:
+            # A is the uncle/aunt
+            if deeper == 2:
+                return "uncle/aunt"
+            return f"great-uncle/aunt" if deeper == 3 else "distant relative"
+        else:
+            if deeper == 2:
+                return "niece/nephew"
+            return f"great-niece/nephew" if deeper == 3 else "distant relative"
+    # Both >= 2: cousins
+    cousin_degree = min(gen_a, gen_b) - 1
+    removal = abs(gen_a - gen_b)
+    if cousin_degree > 4:
+        return "distant relative"
+    if cousin_degree == 1:
+        label = "1st cousin"
+    elif cousin_degree == 2:
+        label = "2nd cousin"
+    elif cousin_degree == 3:
+        label = "3rd cousin"
+    else:
+        label = f"{cousin_degree}th cousin"
+    if removal == 0:
+        return label
+    elif removal == 1:
+        return f"{label} once removed"
+    elif removal == 2:
+        return f"{label} twice removed"
+    else:
+        return f"{label} {removal} times removed"
+
+
+def _build_graph(conn):
+    """Build adjacency list: person_id -> set of neighbour person_ids."""
+    graph = {}
+
+    # Everyone
+    rows = conn.execute("SELECT id FROM persons").fetchall()
+    for r in rows:
+        graph.setdefault(r["id"], set())
+
+    # Parent-child edges
+    fam_rows = conn.execute("SELECT f.father_id, f.mother_id, fc.child_id FROM families f JOIN family_children fc ON fc.family_id = f.id").fetchall()
+    for r in fam_rows:
+        child = r["child_id"]
+        for parent_id in [r["father_id"], r["mother_id"]]:
+            if parent_id:
+                graph.setdefault(child, set()).add(parent_id)
+                graph.setdefault(parent_id, set()).add(child)
+
+    return graph
+
+
+@tree_bp.route("/api/tree/relationship")
+def get_relationship():
+    a_id = request.args.get("a", type=int)
+    b_id = request.args.get("b", type=int)
+    if not a_id or not b_id:
+        return jsonify({"error": "Both a and b query params required"}), 400
+
+    with get_db() as conn:
+        row_a = conn.execute("SELECT * FROM persons WHERE id=?", (a_id,)).fetchone()
+        row_b = conn.execute("SELECT * FROM persons WHERE id=?", (b_id,)).fetchone()
+        if not row_a or not row_b:
+            abort(404)
+
+        person_a = _brief(row_a)
+        person_b = _brief(row_b)
+
+        if a_id == b_id:
+            return jsonify({
+                "person_a": person_a,
+                "person_b": person_b,
+                "relationship": "same person",
+                "path": [person_a["name"]],
+                "distance": 0,
+                "common_ancestors": [],
+            })
+
+        graph = _build_graph(conn)
+
+        # BFS from A — record distance and predecessor
+        from collections import deque
+
+        def bfs(start):
+            dist = {start: 0}
+            prev = {start: None}
+            q = deque([start])
+            while q:
+                node = q.popleft()
+                for nb in graph.get(node, []):
+                    if nb not in dist:
+                        dist[nb] = dist[node] + 1
+                        prev[nb] = node
+                        q.append(nb)
+            return dist, prev
+
+        dist_a, prev_a = bfs(a_id)
+        dist_b, prev_b = bfs(b_id)
+
+        # Find common ancestors (nodes reachable from both)
+        # We want the closest ones — minimum total distance
+        common = set(dist_a.keys()) & set(dist_b.keys())
+        if not common:
+            return jsonify({
+                "person_a": person_a,
+                "person_b": person_b,
+                "relationship": "not related",
+                "path": [],
+                "distance": None,
+                "common_ancestors": [],
+            })
+
+        # Pick the common ancestor with minimum sum of distances
+        best_ca = min(common, key=lambda n: dist_a[n] + dist_b[n])
+        gen_a = dist_a[best_ca]
+        gen_b = dist_b[best_ca]
+        total_dist = gen_a + gen_b
+
+        relationship = _relationship_label(gen_a, gen_b)
+
+        # Reconstruct path: A -> ... -> common_ancestor -> ... -> B
+        def trace_path(prev, start, end):
+            path = []
+            cur = end
+            while cur is not None:
+                path.append(cur)
+                cur = prev[cur]
+            path.reverse()
+            return path
+
+        path_a_ids = trace_path(prev_a, a_id, best_ca)
+        path_b_ids = trace_path(prev_b, b_id, best_ca)
+        # path_b goes from B to CA; we want CA to B, then drop CA (already in path_a)
+        path_b_ids_reversed = list(reversed(path_b_ids))[1:]
+        full_path_ids = path_a_ids + path_b_ids_reversed
+
+        # Build human-readable path with arrows
+        def person_name(pid):
+            r = conn.execute("SELECT name_given, name_surname FROM persons WHERE id=?", (pid,)).fetchone()
+            if not r:
+                return "Unknown"
+            return f"{r['name_given'] or ''} {r['name_surname'] or ''}".strip() or "Unknown"
+
+        path_labels = []
+        for i, pid in enumerate(full_path_ids):
+            path_labels.append(person_name(pid))
+            if i < len(full_path_ids) - 1:
+                path_labels.append("→")
+
+        # All closest common ancestors (same total distance)
+        min_dist = total_dist
+        closest_ancestors = []
+        for ca in common:
+            if dist_a[ca] + dist_b[ca] == min_dist:
+                r = conn.execute("SELECT * FROM persons WHERE id=?", (ca,)).fetchone()
+                if r:
+                    closest_ancestors.append(_brief(r))
+
+        return jsonify({
+            "person_a": person_a,
+            "person_b": person_b,
+            "relationship": relationship,
+            "path": path_labels,
+            "distance": total_dist,
+            "common_ancestors": closest_ancestors,
+        })
+
+
 @tree_bp.route("/api/persons/<int:person_id>/story")
 def person_story(person_id):
     with get_db() as conn:

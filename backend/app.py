@@ -14,6 +14,7 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from database import init_db, DB_PATH
+from api_share import share_bp, check_share_pin
 from api_photos import photos_bp
 from api_persons import persons_bp
 from api_admin import admin_bp
@@ -25,16 +26,25 @@ from api_grampsengine import grampsengine_bp
 from api_ocr import tools_bp
 from api_paperless import paperless_bp
 from api_webtrees import webtrees_bp
+from api_ollama import ollama_bp
+from api_export import export_bp
+from api_search import search_bp
+from api_sources import sources_bp
+from api_notes import notes_bp
+from api_stats import stats_bp
 from gramps_import import register_gramps_routes
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder="../frontend/dist", static_url_path="")
+app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # ── Init DB on startup ────────────────────────────────────────────────────────
 init_db(DB_PATH)
 
 # ── Register blueprints ───────────────────────────────────────────────────────
+app.register_blueprint(share_bp)
+app.before_request(check_share_pin)
 app.register_blueprint(photos_bp)
 app.register_blueprint(persons_bp)
 app.register_blueprint(admin_bp)
@@ -46,6 +56,12 @@ app.register_blueprint(grampsengine_bp)
 app.register_blueprint(tools_bp)
 app.register_blueprint(paperless_bp)
 app.register_blueprint(webtrees_bp)
+app.register_blueprint(ollama_bp)
+app.register_blueprint(export_bp)
+app.register_blueprint(search_bp)
+app.register_blueprint(sources_bp)
+app.register_blueprint(notes_bp)
+app.register_blueprint(stats_bp)
 register_gramps_routes(app, DB_PATH)
 
 # ── Serve React frontend (built) ──────────────────────────────────────────────

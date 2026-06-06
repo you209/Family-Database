@@ -3,6 +3,7 @@
  *
  * Left panel: filter bar + paginated photo grid
  * Right panel: photo detail (metadata editor, face overlay, people list)
+ * Slideshow: fullscreen overlay with navigation, thumbnails, auto-play
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -14,8 +15,8 @@ const API = "";  // proxied via Vite
 function Spinner() {
   return (
     <div style={{
-      width: 20, height: 20, border: "2px solid var(--color-border-secondary)",
-      borderTopColor: "var(--color-accent)", borderRadius: "50%",
+      width: 20, height: 20, border: "2px solid var(--border)",
+      borderTopColor: "var(--accent)", borderRadius: "50%",
       animation: "spin 0.7s linear infinite",
     }} />
   );
@@ -31,11 +32,11 @@ if (!document.getElementById("fr-keyframes")) {
 
 function Tag({ label, color = "gray", onRemove }) {
   const palettes = {
-    gray:   ["#F1EFE8", "#6B6960"],
-    teal:   ["#E1F5EE", "#0F6E56"],
-    blue:   ["#E6F1FB", "#185FA5"],
-    amber:  ["#FAEEDA", "#7A4B0A"],
-    coral:  ["#FAECE7", "#A03D1C"],
+    gray:   ["#2A2A2A", "#999"],
+    teal:   ["rgba(29,158,117,0.18)", "#1D9E75"],
+    blue:   ["rgba(59,130,246,0.18)", "#60A5FA"],
+    amber:  ["rgba(245,166,35,0.18)", "#F5A623"],
+    coral:  ["rgba(220,80,50,0.18)", "#F08060"],
   };
   const [bg, fg] = palettes[color] || palettes.gray;
   return (
@@ -58,19 +59,20 @@ function Tag({ label, color = "gray", onRemove }) {
 
 // ── photo grid thumbnail ──────────────────────────────────────────────────────
 
-function PhotoThumb({ photo, selected, onClick }) {
+function PhotoThumb({ photo, selected, onClick, onDoubleClick }) {
   const hasUntaggedFaces = photo.face_count > 0 && photo.tagged_faces < photo.face_count;
   return (
     <div
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       style={{
         position: "relative", cursor: "pointer",
         borderRadius: 6, overflow: "hidden",
         border: selected
-          ? "2px solid var(--color-accent)"
-          : "1px solid var(--color-border-tertiary)",
+          ? "2px solid var(--accent)"
+          : "1px solid var(--border)",
         aspectRatio: "1",
-        background: "var(--color-background-tertiary)",
+        background: "var(--bg-sel)",
         transition: "border-color 0.1s",
       }}
     >
@@ -85,7 +87,7 @@ function PhotoThumb({ photo, selected, onClick }) {
         <div style={{
           width: "100%", height: "100%",
           display: "flex", alignItems: "center", justifyContent: "center",
-          color: "var(--color-text-tertiary)", fontSize: 24,
+          color: "var(--text-tertiary)", fontSize: 24,
         }}>🖼</div>
       )}
 
@@ -137,7 +139,7 @@ function FaceOverlay({ faces, imgRef }) {
         const top    = (y1 / (imgRef.current?.naturalHeight || 1)) * dims.h;
         const width  = ((x2 - x1) / (imgRef.current?.naturalWidth  || 1)) * dims.w;
         const height = ((y2 - y1) / (imgRef.current?.naturalHeight || 1)) * dims.h;
-        const color  = f.person_id ? "var(--color-accent)" : "#F5A623";
+        const color  = f.person_id ? "var(--accent)" : "#F5A623";
         return (
           <div key={i} style={{
             position: "absolute", left, top, width, height,
@@ -197,7 +199,7 @@ function MetaEditor({ photo, onSaved }) {
 
   const row = (label, content) => (
     <div style={{ display: "flex", gap: 10, marginBottom: 10, alignItems: "flex-start" }}>
-      <div style={{ width: 72, fontSize: 11, color: "var(--color-text-tertiary)", paddingTop: 2, flexShrink: 0 }}>{label}</div>
+      <div style={{ width: 72, fontSize: 11, color: "var(--text-tertiary)", paddingTop: 2, flexShrink: 0 }}>{label}</div>
       <div style={{ flex: 1 }}>{content}</div>
     </div>
   );
@@ -205,10 +207,10 @@ function MetaEditor({ photo, onSaved }) {
   if (!editing) {
     return (
       <div>
-        {row("Date", <span style={{ fontSize: 13 }}>{photo.date_text || (photo.date_year ? String(photo.date_year) : <em style={{ color: "var(--color-text-tertiary)" }}>unknown</em>)}</span>)}
-        {row("Description", <span style={{ fontSize: 13 }}>{photo.description || <em style={{ color: "var(--color-text-tertiary)" }}>none</em>}</span>)}
-        {row("File", <span style={{ fontSize: 11, color: "var(--color-text-secondary)", fontFamily: "var(--font-mono)" }}>{photo.filename}</span>)}
-        {photo.width && row("Size", <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{photo.width}×{photo.height}</span>)}
+        {row("Date", <span style={{ fontSize: 13 }}>{photo.date_text || (photo.date_year ? String(photo.date_year) : <em style={{ color: "var(--text-tertiary)" }}>unknown</em>)}</span>)}
+        {row("Description", <span style={{ fontSize: 13 }}>{photo.description || <em style={{ color: "var(--text-tertiary)" }}>none</em>}</span>)}
+        {row("File", <span style={{ fontSize: 11, color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}>{photo.filename}</span>)}
+        {photo.width && row("Size", <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{photo.width}×{photo.height}</span>)}
         <button onClick={() => setEditing(true)} style={{ fontSize: 12, marginTop: 4 }}>Edit metadata</button>
       </div>
     );
@@ -252,6 +254,38 @@ function MetaEditor({ photo, onSaved }) {
   );
 }
 
+// ── portrait row ──────────────────────────────────────────────────────────────
+
+function PortraitRow({ person, photoId }) {
+  const [saved, setSaved] = useState(false);
+  const set = async () => {
+    await fetch(`/api/persons/${person.id}/portrait`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ media_id: photoId }),
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <Tag label={person.name} color="teal" />
+      <button
+        onClick={set}
+        style={{
+          fontSize: 10, padding: "2px 8px",
+          background: saved ? "rgba(29,158,117,0.2)" : "var(--bg-sel)",
+          color: saved ? "var(--accent)" : "var(--text-secondary)",
+          border: "1px solid var(--border)", borderRadius: 5,
+          cursor: "pointer", whiteSpace: "nowrap",
+        }}
+      >
+        {saved ? "✓ Portrait set" : "Set as portrait"}
+      </button>
+    </div>
+  );
+}
+
 // ── photo detail panel ────────────────────────────────────────────────────────
 
 function PhotoDetail({ photoId, onClose, onMetaSaved }) {
@@ -274,8 +308,8 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
   const panelStyle = {
     width: 360, flexShrink: 0,
     display: "flex", flexDirection: "column",
-    borderLeft: "0.5px solid var(--color-border-tertiary)",
-    background: "var(--color-background-primary)",
+    borderLeft: "0.5px solid var(--border)",
+    background: "var(--bg-app)",
     overflow: "hidden",
   };
 
@@ -286,11 +320,11 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
       {/* Panel header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "10px 14px", borderBottom: "0.5px solid var(--color-border-tertiary)",
-        background: "var(--color-background-secondary)", flexShrink: 0,
+        padding: "10px 14px", borderBottom: "0.5px solid var(--border)",
+        background: "var(--bg-card)", flexShrink: 0,
       }}>
         <span style={{ fontSize: 13, fontWeight: 500 }}>Photo detail</span>
-        <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 16, padding: "0 4px", cursor: "pointer", color: "var(--color-text-secondary)" }}>✕</button>
+        <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 16, padding: "0 4px", cursor: "pointer", color: "var(--text-secondary)" }}>✕</button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
@@ -304,7 +338,7 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
             <div style={{
               position: "relative", borderRadius: 8, overflow: "hidden",
               background: "#000", marginBottom: 14,
-              border: "0.5px solid var(--color-border-tertiary)",
+              border: "0.5px solid var(--border)",
             }}>
               <img
                 ref={imgRef}
@@ -328,14 +362,14 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
             {/* People in photo */}
             {photo.people?.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>People</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>People</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {photo.people.map(p => (
-                    <Tag key={p.id} label={p.name} color="teal" />
+                    <PortraitRow key={p.id} person={p} photoId={photo.id} />
                   ))}
                 </div>
                 {photo.face_count > photo.people.length && (
-                  <div style={{ fontSize: 11, color: "#BA7517", marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: "#F5A623", marginTop: 6 }}>
                     ⚠ {photo.face_count - photo.people.length} untagged face{photo.face_count - photo.people.length !== 1 ? "s" : ""} — name them in the Faces tab
                   </div>
                 )}
@@ -344,17 +378,17 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
 
             {/* Metadata */}
             <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Metadata</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Metadata</div>
               <MetaEditor photo={photo} onSaved={() => { load(); onMetaSaved?.(); }} />
             </div>
 
             {/* EXIF */}
             {photo.exif && Object.keys(photo.exif).length > 0 && (
               <details style={{ marginTop: 8 }}>
-                <summary style={{ fontSize: 11, color: "var(--color-text-tertiary)", cursor: "pointer" }}>EXIF data</summary>
-                <div style={{ marginTop: 8, fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--color-text-secondary)", lineHeight: 1.8 }}>
+                <summary style={{ fontSize: 11, color: "var(--text-tertiary)", cursor: "pointer" }}>EXIF data</summary>
+                <div style={{ marginTop: 8, fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--text-secondary)", lineHeight: 1.8 }}>
                   {Object.entries(photo.exif).slice(0, 12).map(([k, v]) => (
-                    <div key={k}><span style={{ color: "var(--color-text-tertiary)" }}>{k}:</span> {String(v)}</div>
+                    <div key={k}><span style={{ color: "var(--text-tertiary)" }}>{k}:</span> {String(v)}</div>
                   ))}
                 </div>
               </details>
@@ -366,9 +400,194 @@ function PhotoDetail({ photoId, onClose, onMetaSaved }) {
   );
 }
 
+// ── slideshow ─────────────────────────────────────────────────────────────────
+
+function Slideshow({ photos, startIndex, onClose }) {
+  const [index, setIndex]       = useState(startIndex);
+  const [playing, setPlaying]   = useState(false);
+  const [details, setDetails]   = useState({});  // cache by photo id
+  const thumbsRef = useRef(null);
+  const timerRef  = useRef(null);
+
+  const current = photos[index];
+
+  // Fetch photo detail on demand (cached)
+  useEffect(() => {
+    if (!current) return;
+    if (details[current.id]) return;
+    fetch(`${API}/api/photos/${current.id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setDetails(prev => ({ ...prev, [current.id]: d })); })
+      .catch(() => {});
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-play timer
+  useEffect(() => {
+    if (playing) {
+      timerRef.current = setInterval(() => {
+        setIndex(i => (i + 1) % photos.length);
+      }, 4000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [playing, photos.length]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "ArrowLeft")  setIndex(i => (i - 1 + photos.length) % photos.length);
+      if (e.key === "ArrowRight") setIndex(i => (i + 1) % photos.length);
+      if (e.key === "Escape")     onClose();
+      if (e.key === " ")          { e.preventDefault(); setPlaying(p => !p); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [photos.length, onClose]);
+
+  // Scroll active thumbnail into view
+  useEffect(() => {
+    const el = thumbsRef.current?.children[index];
+    el?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [index]);
+
+  if (!current) return null;
+
+  const detail = details[current.id];
+  const dateLabel = detail?.date_text || (detail?.date_year ? String(detail.date_year) : current.date_year ? String(current.date_year) : "");
+  const people = detail?.people || [];
+
+  const navBtnStyle = {
+    position: "absolute", top: "50%", transform: "translateY(-50%)",
+    background: "rgba(0,0,0,0.5)", border: "none", borderRadius: 8,
+    color: "#fff", fontSize: 28, width: 52, height: 72,
+    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+    zIndex: 10,
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "rgba(0,0,0,0.95)",
+      zIndex: 9000,
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* Top bar */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px",
+        background: "rgba(0,0,0,0.6)",
+        flexShrink: 0,
+        gap: 12,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {current.filename}
+          </div>
+          {dateLabel && (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 1 }}>{dateLabel}</div>
+          )}
+        </div>
+
+        {/* Counter */}
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", flexShrink: 0 }}>
+          {index + 1} / {photos.length}
+        </div>
+
+        {/* Play/pause */}
+        <button
+          onClick={() => setPlaying(p => !p)}
+          style={{ background: "none", border: "none", fontSize: 18, color: "#fff", cursor: "pointer", padding: "4px 8px" }}
+          title={playing ? "Pause" : "Play"}
+        >
+          {playing ? "⏸" : "▶"}
+        </button>
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          style={{ background: "none", border: "none", fontSize: 20, color: "rgba(255,255,255,0.8)", cursor: "pointer", padding: "4px 8px" }}
+        >✕</button>
+      </div>
+
+      {/* Main image area */}
+      <div style={{ flex: 1, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        {/* Prev */}
+        <button
+          style={{ ...navBtnStyle, left: 8 }}
+          onClick={() => setIndex(i => (i - 1 + photos.length) % photos.length)}
+        >←</button>
+
+        {/* Image */}
+        <img
+          key={current.id}
+          src={current.original_url || current.thumb_url}
+          alt={current.filename}
+          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }}
+        />
+
+        {/* Next */}
+        <button
+          style={{ ...navBtnStyle, right: 8 }}
+          onClick={() => setIndex(i => (i + 1) % photos.length)}
+        >→</button>
+
+        {/* Person tags overlay */}
+        {people.length > 0 && (
+          <div style={{
+            position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)",
+            display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center",
+            pointerEvents: "none",
+          }}>
+            {people.map(p => (
+              <span key={p.id} style={{
+                background: "rgba(29,158,117,0.85)", color: "#fff",
+                fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 5,
+              }}>{p.name}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      <div
+        ref={thumbsRef}
+        style={{
+          display: "flex", gap: 4, padding: "8px 12px",
+          overflowX: "auto", flexShrink: 0,
+          background: "rgba(0,0,0,0.7)",
+          scrollbarWidth: "thin",
+          scrollbarColor: "rgba(255,255,255,0.2) transparent",
+        }}
+      >
+        {photos.map((p, i) => (
+          <div
+            key={p.id}
+            onClick={() => setIndex(i)}
+            style={{
+              width: 56, height: 56, flexShrink: 0,
+              borderRadius: 4, overflow: "hidden",
+              border: i === index ? "2px solid var(--accent)" : "2px solid transparent",
+              cursor: "pointer", opacity: i === index ? 1 : 0.55,
+              transition: "opacity 0.1s, border-color 0.1s",
+              background: "#111",
+            }}
+          >
+            {p.thumb_url ? (
+              <img src={p.thumb_url} alt={p.filename} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#555", fontSize: 18 }}>🖼</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── filter bar ────────────────────────────────────────────────────────────────
 
-function FilterBar({ filters, onChange, stats }) {
+function FilterBar({ filters, onChange, stats, onSlideshow }) {
   const years = [];
   if (stats?.earliest_year && stats?.latest_year) {
     for (let y = stats.latest_year; y >= stats.earliest_year; y--) years.push(y);
@@ -378,8 +597,8 @@ function FilterBar({ filters, onChange, stats }) {
     <div style={{
       display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
       padding: "10px 16px",
-      borderBottom: "0.5px solid var(--color-border-tertiary)",
-      background: "var(--color-background-secondary)",
+      borderBottom: "0.5px solid var(--border)",
+      background: "var(--bg-card)",
       flexShrink: 0,
     }}>
       {/* Year filter */}
@@ -424,11 +643,24 @@ function FilterBar({ filters, onChange, stats }) {
       )}
 
       {stats && (
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--color-text-tertiary)" }}>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-tertiary)" }}>
           {stats.total_photos.toLocaleString()} total
           {stats.without_date > 0 && ` · ${stats.without_date} undated`}
         </span>
       )}
+
+      {/* Slideshow button */}
+      <button
+        onClick={onSlideshow}
+        style={{
+          fontSize: 12, padding: "5px 10px",
+          background: "var(--bg-sel)", border: "1px solid var(--border)",
+          borderRadius: 6, color: "var(--text-primary)", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 4,
+        }}
+      >
+        ▶ Slideshow
+      </button>
     </div>
   );
 }
@@ -440,11 +672,11 @@ function Pagination({ page, pages, onChange }) {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-      padding: "12px 16px", borderTop: "0.5px solid var(--color-border-tertiary)",
+      padding: "12px 16px", borderTop: "0.5px solid var(--border)",
       flexShrink: 0,
     }}>
       <button onClick={() => onChange(page - 1)} disabled={page <= 1}>← Prev</button>
-      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
         Page {page} of {pages}
       </span>
       <button onClick={() => onChange(page + 1)} disabled={page >= pages}>Next →</button>
@@ -462,6 +694,7 @@ export default function PhotosTab() {
   const [selectedId, setSelectedId] = useState(null);
   const [stats, setStats]         = useState(null);
   const [filters, setFilters]     = useState({ page: 1, sort: "date_asc" });
+  const [slideshow, setSlideshow] = useState(null); // { startIndex }
   const gridRef = useRef(null);
 
   // Load stats once
@@ -506,9 +739,23 @@ export default function PhotosTab() {
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      {/* Slideshow overlay */}
+      {slideshow && photos.length > 0 && (
+        <Slideshow
+          photos={photos}
+          startIndex={slideshow.startIndex}
+          onClose={() => setSlideshow(null)}
+        />
+      )}
+
       {/* Left: grid */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <FilterBar filters={filters} onChange={handleFilterChange} stats={stats} />
+        <FilterBar
+          filters={filters}
+          onChange={handleFilterChange}
+          stats={stats}
+          onSlideshow={() => setSlideshow({ startIndex: 0 })}
+        />
 
         {/* Grid */}
         <div ref={gridRef} style={{ flex: 1, overflowY: "auto", padding: 12 }}>
@@ -519,7 +766,7 @@ export default function PhotosTab() {
           )}
 
           {!loading && photos.length === 0 && (
-            <div style={{ textAlign: "center", marginTop: 80, color: "var(--color-text-tertiary)" }}>
+            <div style={{ textAlign: "center", marginTop: 80, color: "var(--text-tertiary)" }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>🖼</div>
               <div style={{ fontSize: 14 }}>No photos found</div>
               <div style={{ fontSize: 12, marginTop: 4 }}>
@@ -534,12 +781,13 @@ export default function PhotosTab() {
               gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
               gap: 8,
             }}>
-              {photos.map(p => (
+              {photos.map((p, i) => (
                 <PhotoThumb
                   key={p.id}
                   photo={p}
                   selected={selectedId === p.id}
                   onClick={() => setSelectedId(selectedId === p.id ? null : p.id)}
+                  onDoubleClick={() => setSlideshow({ startIndex: i })}
                 />
               ))}
             </div>

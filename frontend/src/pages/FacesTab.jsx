@@ -15,8 +15,8 @@ const API = "";
 function Spinner() {
   return (
     <div style={{
-      width: 20, height: 20, border: "2px solid var(--color-border-secondary)",
-      borderTopColor: "var(--color-accent)", borderRadius: "50%",
+      width: 20, height: 20, border: "2px solid var(--border)",
+      borderTopColor: "var(--accent)", borderRadius: "50%",
       animation: "spin 0.7s linear infinite",
     }} />
   );
@@ -29,7 +29,7 @@ function FaceCrop({ thumbUrl, bbox, size = 72 }) {
     return (
       <div style={{
         width: size, height: size, borderRadius: size * 0.2,
-        background: "var(--color-background-tertiary)",
+        background: "var(--bg-sel)",
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: size * 0.4, flexShrink: 0,
       }}>👤</div>
@@ -45,8 +45,8 @@ function FaceCrop({ thumbUrl, bbox, size = 72 }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: "50%",
-      overflow: "hidden", flexShrink: 0, border: "2px solid var(--color-border-primary)",
-      background: "var(--color-background-tertiary)",
+      overflow: "hidden", flexShrink: 0, border: "2px solid var(--border)",
+      background: "var(--bg-sel)",
     }}>
       <img
         src={thumbUrl}
@@ -94,7 +94,7 @@ function PersonPicker({ onSelect, onCreateNew }) {
 
       {results.length > 0 && (
         <div style={{
-          border: "0.5px solid var(--color-border-secondary)",
+          border: "0.5px solid var(--border)",
           borderRadius: 8, overflow: "hidden", marginBottom: 8,
         }}>
           {results.map(p => (
@@ -103,14 +103,14 @@ function PersonPicker({ onSelect, onCreateNew }) {
               onClick={() => onSelect(p)}
               style={{
                 padding: "8px 12px", cursor: "pointer", fontSize: 13,
-                borderBottom: "0.5px solid var(--color-border-tertiary)",
+                borderBottom: "0.5px solid var(--border)",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}
-              onMouseEnter={e => e.currentTarget.style.background = "var(--color-background-secondary)"}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--bg-card)"}
               onMouseLeave={e => e.currentTarget.style.background = ""}
             >
               <span>{p.name_given} {p.name_surname}</span>
-              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
                 {p.birth_year || ""}
               </span>
             </div>
@@ -119,7 +119,7 @@ function PersonPicker({ onSelect, onCreateNew }) {
       )}
 
       {query.length >= 2 && results.length === 0 && !loading && (
-        <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
           No matches found.
         </div>
       )}
@@ -188,8 +188,8 @@ function ClusterCard({ cluster, onAssigned }) {
   if (done) {
     return (
       <div style={{
-        border: "0.5px solid var(--color-accent)",
-        borderRadius: 10, padding: 14, background: "var(--color-accent-light)",
+        border: "0.5px solid var(--accent)",
+        borderRadius: 10, padding: 14, background: "rgba(29,158,117,0.18)",
         display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#0F6E56",
       }}>
         ✓ Assigned successfully
@@ -199,9 +199,9 @@ function ClusterCard({ cluster, onAssigned }) {
 
   return (
     <div style={{
-      border: "0.5px solid var(--color-border-tertiary)",
+      border: "0.5px solid var(--border)",
       borderRadius: 10, overflow: "hidden",
-      background: "var(--color-background-primary)",
+      background: "var(--bg-app)",
     }}>
       {/* Card header */}
       <div
@@ -220,17 +220,17 @@ function ClusterCard({ cluster, onAssigned }) {
           <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 3 }}>
             Unknown person #{cluster.cluster_id}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             {cluster.face_count} face{cluster.face_count !== 1 ? "s" : ""} across{" "}
             {cluster.photo_count} photo{cluster.photo_count !== 1 ? "s" : ""}
             {cluster.avg_confidence && (
-              <span style={{ color: "var(--color-text-tertiary)" }}>
+              <span style={{ color: "var(--text-tertiary)" }}>
                 {" "}· {Math.round(cluster.avg_confidence * 100)}% confidence
               </span>
             )}
           </div>
         </div>
-        <div style={{ fontSize: 18, color: "var(--color-text-tertiary)", userSelect: "none" }}>
+        <div style={{ fontSize: 18, color: "var(--text-tertiary)", userSelect: "none" }}>
           {expanded ? "▲" : "▼"}
         </div>
       </div>
@@ -239,11 +239,11 @@ function ClusterCard({ cluster, onAssigned }) {
       {expanded && (
         <div style={{
           padding: "0 14px 14px",
-          borderTop: "0.5px solid var(--color-border-tertiary)",
+          borderTop: "0.5px solid var(--border)",
         }}>
           {!assigning ? (
             <div style={{ paddingTop: 12 }}>
-              <p style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>
+              <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
                 All {cluster.face_count} faces in this cluster will be tagged with the person you choose.
               </p>
               <button
@@ -313,15 +313,15 @@ export default function FacesTab() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header */}
       <div style={{
-        padding: "12px 20px", borderBottom: "0.5px solid var(--color-border-tertiary)",
-        background: "var(--color-background-secondary)",
+        padding: "12px 20px", borderBottom: "0.5px solid var(--border)",
+        background: "var(--bg-card)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexShrink: 0,
       }}>
         <div>
           <span style={{ fontSize: 14, fontWeight: 500 }}>Unknown face clusters</span>
           {!loading && (
-            <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", marginLeft: 10 }}>
+            <span style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 10 }}>
               {clusters.length} cluster{clusters.length !== 1 ? "s" : ""} to name
             </span>
           )}
@@ -340,7 +340,7 @@ export default function FacesTab() {
         )}
 
         {!loading && clusters.length === 0 && (
-          <div style={{ textAlign: "center", marginTop: 80, color: "var(--color-text-tertiary)" }}>
+          <div style={{ textAlign: "center", marginTop: 80, color: "var(--text-tertiary)" }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>👥</div>
             <div style={{ fontSize: 14, marginBottom: 6 }}>All faces are named!</div>
             <div style={{ fontSize: 12 }}>
