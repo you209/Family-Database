@@ -1,0 +1,28 @@
+name: Family Database
+description: Local-first family history database with photos, family tree, timeline and map.
+version: "0.1.0"
+slug: family_database
+url: https://github.com/you209/Family-Database
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+webui: "http://[HOST]:[PORT:5050]"
+ingress: true
+ingress_port: 5050
+panel_icon: mdi:family-tree
+panel_title: Family Database
+ports:
+  5050/tcp: 5050
+ports_description:
+  5050/tcp: Family Database web interface
+map:
+  - share:rw
+options:
+  data_folder: /share/family_database
+  debug: false
+schema:
+  data_folder: str
+  debug: bool
