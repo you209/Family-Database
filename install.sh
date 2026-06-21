@@ -55,9 +55,9 @@ sudo apt-get update -qq
 
 # python3-venv is not installed by default on Pi OS
 # python3-pip  is missing on Lite images
-# libatlas-base-dev is needed by numpy (used by face AI)
+# libopenblas-dev provides BLAS libraries used by numpy/scipy builds
 # rsync is used to copy the repo
-apt_install python3 python3-venv python3-pip libatlas-base-dev rsync
+apt_install python3 python3-venv python3-pip libopenblas-dev rsync
 
 # ── Node.js for frontend build ────────────────────────────────────────────────
 if ! command -v node >/dev/null || [[ "$(node -e 'process.exit(+process.versions.node.split(".")[0]<18)')" ]]; then

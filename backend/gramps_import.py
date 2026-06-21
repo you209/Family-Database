@@ -1,11 +1,12 @@
 """
 FamilyRoot — gramps_import.py
 
-Imports a Gramps XML (.gramps) file into the FamilyRoot database.
-Gramps XML is a gzip-compressed XML file — this handles both compressed
-and uncompressed variants.
+Imports a Gramps XML (.gramps) or GEDCOM (.ged / .gedcom) file into the
+FamilyRoot database. Gramps XML is a gzip-compressed XML file — this handles
+both compressed and uncompressed variants. GEDCOM files are plain
+line-tag-value text and are parsed with a dedicated GedcomImporter.
 
-Supported Gramps objects:
+Supported Gramps XML objects:
   - People (names, gender, notes, privacy)
   - Families (parents, children, relationship type)
   - Events (all types, dates, places, notes)
@@ -15,11 +16,21 @@ Supported Gramps objects:
   - Tags
   - Notes
 
+Supported GEDCOM objects:
+  - Individuals (names, sex, notes, attributes)
+  - Families (HUSB/WIFE/CHIL, relationship events)
+  - Events (BIRT, DEAT, MARR, and other standard tags, with dates/places)
+  - Sources + Repositories
+  - Media objects (OBJE/FILE)
+  - Notes (inline and shared @N..@ records)
+
 Run:
     python gramps_import.py yourfile.gramps [--db path/to/familyroot.db]
+    python gramps_import.py yourfile.ged [--db path/to/familyroot.db]
 
 Or via the REST API:
     POST /api/gramps/import  { "file_path": "/path/to/file.gramps" }
+    POST /api/gramps/import  { "file_path": "/path/to/file.ged" }
 """
 
 import gzip
@@ -111,6 +122,203 @@ def _find_date(el, ns):
         if child is not None:
             return _parse_gramps_date(child)
     return {"date_text": None, "date_year": None, "date_sort": None}
+
+
+# ── GEDCOM date parsing ──────────────────────────────────────────────────────
+
+GEDCOM_MONTHS = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+# GEDCOM event tags → Gramps-style event type names
+GEDCOM_EVENT_TYPES = {
+    "BIRT": "Birth", "CHR": "Christening", "DEAT": "Death", "BURI": "Burial",
+    "CREM": "Cremation", "ADOP": "Adoption", "BAPM": "Baptism",
+    "BARM": "Bar Mitzvah", "BASM": "Bas Mitzvah", "BLES": "Blessing",
+    "CONF": "Confirmation", "FCOM": "First Communion", "ORDN": "Ordination",
+    "NATU": "Naturalization", "EMIG": "Emigration", "IMMI": "Immigration",
+    "CENS": "Census", "PROB": "Probate", "WILL": "Will", "GRAD": "Graduation",
+    "RETI": "Retirement", "EVEN": "Custom",
+    "MARR": "Marriage", "DIV": "Divorce", "DIVF": "Divorce Filing",
+    "ENGA": "Engagement", "MARB": "Marriage Banns", "MARC": "Marriage Contract",
+    "MARL": "Marriage License", "MARS": "Marriage Settlement",
+    "ANUL": "Annulment", "RESI": "Residence",
+}
+
+# GEDCOM attribute tags → person_attributes.attr_type
+GEDCOM_ATTR_TYPES = {
+    "OCCU": "Occupation", "EDUC": "Education", "RELI": "Religion",
+    "NATI": "Nationality", "DSCR": "Description", "IDNO": "ID Number",
+    "NCHI": "Number of Children", "NMR": "Number of Marriages",
+    "PROP": "Property", "SSN": "Social Security Number", "TITL": "Title",
+    "CAST": "Caste", "FACT": "Fact",
+}
+
+
+def _parse_gedcom_date_simple(s: str) -> dict:
+    """Parse a plain GEDCOM date like '1 JAN 1900', 'JAN 1900', or '1900'."""
+    s = s.strip()
+    if not s:
+        return {"text": None, "year": None, "sort": None}
+
+    year = month = day = None
+    for tok in s.split():
+        tok_clean = tok.strip(".,")
+        if tok_clean.isdigit():
+            if len(tok_clean) == 4:
+                year = int(tok_clean)
+            elif day is None:
+                day = int(tok_clean)
+        else:
+            mon = GEDCOM_MONTHS.get(tok_clean.upper()[:3])
+            if mon:
+                month = mon
+
+    bits = []
+    if day:
+        bits.append(str(day))
+    if month:
+        bits.append(GRAMPS_MONTHS.get(str(month), str(month)))
+    if year:
+        bits.append(str(year))
+
+    text = " ".join(bits) if bits else (s or None)
+    sort = f"{year:04d}-{month or 0:02d}-{day or 0:02d}" if year else None
+    return {"text": text, "year": year, "sort": sort}
+
+
+def _parse_gedcom_date(value: Optional[str]) -> dict:
+    """
+    Parse a GEDCOM DATE value, including ABT/EST/CAL/BEF/AFT/BET..AND/FROM..TO
+    modifiers. Returns { date_text, date_year, date_sort }.
+    """
+    if not value:
+        return {"date_text": None, "date_year": None, "date_sort": None}
+
+    value = value.strip()
+    upper = value.upper()
+
+    mod_map = {"ABT": "Abt.", "EST": "Est.", "CAL": "Cal."}
+    for prefix, disp in mod_map.items():
+        if upper.startswith(prefix + " "):
+            rest = value[len(prefix):].strip()
+            p = _parse_gedcom_date_simple(rest)
+            return {"date_text": f"{disp} {p['text'] or rest}", "date_year": p["year"], "date_sort": p["sort"]}
+
+    if upper.startswith("BEF "):
+        rest = value[4:].strip()
+        p = _parse_gedcom_date_simple(rest)
+        return {"date_text": f"Bef. {p['text'] or rest}", "date_year": p["year"], "date_sort": p["sort"]}
+
+    if upper.startswith("AFT "):
+        rest = value[4:].strip()
+        p = _parse_gedcom_date_simple(rest)
+        return {"date_text": f"Aft. {p['text'] or rest}", "date_year": p["year"], "date_sort": p["sort"]}
+
+    m = re.match(r"BET\s+(.+?)\s+AND\s+(.+)", value, re.I)
+    if m:
+        p1 = _parse_gedcom_date_simple(m.group(1))
+        p2 = _parse_gedcom_date_simple(m.group(2))
+        return {
+            "date_text": f"Bet. {p1['text'] or m.group(1)} and {p2['text'] or m.group(2)}",
+            "date_year": p1["year"], "date_sort": p1["sort"],
+        }
+
+    m = re.match(r"FROM\s+(.+?)(?:\s+TO\s+(.+))?$", value, re.I)
+    if m:
+        p1 = _parse_gedcom_date_simple(m.group(1))
+        if m.group(2):
+            p2 = _parse_gedcom_date_simple(m.group(2))
+            return {
+                "date_text": f"From {p1['text'] or m.group(1)} to {p2['text'] or m.group(2)}",
+                "date_year": p1["year"], "date_sort": p1["sort"],
+            }
+        return {"date_text": f"From {p1['text'] or m.group(1)}", "date_year": p1["year"], "date_sort": p1["sort"]}
+
+    p = _parse_gedcom_date_simple(value)
+    return {"date_text": p["text"] or value, "date_year": p["year"], "date_sort": p["sort"]}
+
+
+def _parse_gedcom_lines(path: Path) -> list:
+    """Read a GEDCOM file and return a flat list of (level, xref, tag, value) tuples."""
+    raw = path.read_bytes()
+    text = None
+    for enc in ("utf-8-sig", "utf-16", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode("utf-8", errors="replace")
+
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(" ", 2)
+        if len(parts) < 2:
+            continue
+        try:
+            level = int(parts[0])
+        except ValueError:
+            continue
+
+        rest = parts[1:]
+        if rest[0].startswith("@") and rest[0].endswith("@") and len(rest[0]) > 2:
+            xref = rest[0][1:-1]
+            tagval = rest[1] if len(rest) > 1 else ""
+            tv = tagval.split(" ", 1)
+            tag = tv[0]
+            value = tv[1] if len(tv) > 1 else ""
+        else:
+            tag = rest[0]
+            value = rest[1] if len(rest) > 1 else ""
+            xref = None
+
+        lines.append((level, xref, tag, value))
+    return lines
+
+
+def _build_gedcom_tree(lines: list) -> list:
+    """Build a tree of nested records from flat (level, xref, tag, value) tuples."""
+    records = []
+    stack = []
+    for level, xref, tag, value in lines:
+        node = {"level": level, "xref": xref, "tag": tag, "value": value, "children": []}
+        if level == 0:
+            records.append(node)
+            stack = [node]
+        else:
+            del stack[level:]
+            if stack:
+                stack[-1]["children"].append(node)
+            stack.append(node)
+    return records
+
+
+def _gedcom_child(node, tag):
+    for c in node["children"]:
+        if c["tag"] == tag:
+            return c
+    return None
+
+
+def _gedcom_children(node, tag):
+    return [c for c in node["children"] if c["tag"] == tag]
+
+
+def _gedcom_text(node) -> Optional[str]:
+    """Value of a node plus any CONC/CONT continuation children."""
+    text = node["value"] or ""
+    for child in node["children"]:
+        if child["tag"] == "CONC":
+            text += child["value"] or ""
+        elif child["tag"] == "CONT":
+            text += "\n" + (child["value"] or "")
+    return text or None
 
 
 # ── main importer ─────────────────────────────────────────────────────────────
@@ -564,6 +772,366 @@ class GrampsImporter:
         return self.stats
 
 
+# ── GEDCOM importer ──────────────────────────────────────────────────────────
+
+class GedcomImporter:
+    def __init__(self, db_path: Path):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path)
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn.execute("PRAGMA journal_mode=WAL")
+
+        self._person_map: dict[str, int] = {}
+        self._family_map: dict[str, int] = {}
+        self._source_map: dict[str, int] = {}
+        self._repo_map: dict[str, int] = {}
+        self._media_map: dict[str, int] = {}
+        self._note_map: dict[str, str] = {}
+        self._place_map: dict[str, int] = {}
+
+        self.stats = {k: 0 for k in (
+            "persons", "families", "events", "places", "sources",
+            "repositories", "citations", "media", "notes", "tags", "errors"
+        )}
+
+    # ── notes ─────────────────────────────────────────────────────────────────
+
+    def _import_notes(self, records):
+        for el in records:
+            if el["tag"] != "NOTE" or not el["xref"]:
+                continue
+            self._note_map[el["xref"]] = _gedcom_text(el)
+            self.stats["notes"] += 1
+
+    def _collect_notes(self, el) -> Optional[str]:
+        parts = []
+        for note_el in _gedcom_children(el, "NOTE"):
+            val = (note_el["value"] or "").strip()
+            if val.startswith("@") and val.endswith("@"):
+                text = self._note_map.get(val[1:-1])
+            else:
+                text = _gedcom_text(note_el)
+            if text:
+                parts.append(text)
+        return "\n".join(parts) or None
+
+    # ── repositories ─────────────────────────────────────────────────────────
+
+    def _import_repositories(self, records):
+        for el in records:
+            if el["tag"] != "REPO" or not el["xref"]:
+                continue
+            gid = el["xref"]
+            name_el = _gedcom_child(el, "NAME")
+            name = _gedcom_text(name_el) if name_el else gid
+
+            addr_el = _gedcom_child(el, "ADDR")
+            address = _gedcom_text(addr_el) if addr_el else None
+
+            www_el = _gedcom_child(el, "WWW")
+            url = www_el["value"] if www_el else None
+
+            cur = self.conn.execute("""
+                INSERT OR REPLACE INTO repositories (gramps_id, name, address, url)
+                VALUES (?,?,?,?)
+            """, (gid, name or gid, address, url))
+            self._repo_map[gid] = cur.lastrowid
+            self.stats["repositories"] += 1
+
+    # ── sources ───────────────────────────────────────────────────────────────
+
+    def _import_sources(self, records):
+        for el in records:
+            if el["tag"] != "SOUR" or not el["xref"]:
+                continue
+            gid = el["xref"]
+            titl_el = _gedcom_child(el, "TITL")
+            title = _gedcom_text(titl_el) if titl_el else gid
+            auth_el = _gedcom_child(el, "AUTH")
+            author = _gedcom_text(auth_el) if auth_el else None
+            publ_el = _gedcom_child(el, "PUBL")
+            pub = _gedcom_text(publ_el) if publ_el else None
+            abbr_el = _gedcom_child(el, "ABBR")
+            abbrev = _gedcom_text(abbr_el) if abbr_el else None
+
+            repo_el = _gedcom_child(el, "REPO")
+            repo_handle = None
+            if repo_el and repo_el["value"]:
+                val = repo_el["value"].strip()
+                if val.startswith("@") and val.endswith("@"):
+                    repo_handle = val[1:-1]
+
+            cur = self.conn.execute("""
+                INSERT OR REPLACE INTO sources
+                    (gramps_id, title, author, pubinfo, abbrev, repository_id)
+                VALUES (?,?,?,?,?,?)
+            """, (
+                gid, title or gid, author, pub, abbrev,
+                self._repo_map.get(repo_handle) if repo_handle else None,
+            ))
+            self._source_map[gid] = cur.lastrowid
+            self.stats["sources"] += 1
+
+    # ── media ─────────────────────────────────────────────────────────────────
+
+    def _import_media(self, records):
+        for el in records:
+            if el["tag"] != "OBJE" or not el["xref"]:
+                continue
+            gid = el["xref"]
+            file_el = _gedcom_child(el, "FILE")
+            if file_el is None:
+                continue
+            filename = file_el["value"] or ""
+
+            titl_el = _gedcom_child(el, "TITL")
+            desc = _gedcom_text(titl_el) if titl_el else None
+
+            form_el = _gedcom_child(file_el, "FORM")
+            mime = None
+            if form_el and form_el["value"]:
+                ext = form_el["value"].strip().lower()
+                if ext:
+                    mime = f"image/{ext}" if ext in ("jpg", "jpeg", "png", "gif", "tiff", "bmp", "webp") else None
+
+            cur = self.conn.execute("""
+                INSERT OR REPLACE INTO media (gramps_id, filename, mime, description, path)
+                VALUES (?,?,?,?,?)
+            """, (gid, Path(filename).name, mime, desc, filename))
+            self._media_map[gid] = cur.lastrowid
+            self.stats["media"] += 1
+
+    # ── places ────────────────────────────────────────────────────────────────
+
+    def _get_or_create_place(self, name: Optional[str]) -> Optional[int]:
+        if not name:
+            return None
+        name = name.strip()
+        if not name:
+            return None
+        if name in self._place_map:
+            return self._place_map[name]
+        cur = self.conn.execute("INSERT INTO places (name) VALUES (?)", (name,))
+        place_id = cur.lastrowid
+        self._place_map[name] = place_id
+        self.stats["places"] += 1
+        return place_id
+
+    # ── events ────────────────────────────────────────────────────────────────
+
+    def _import_event(self, node, gramps_id: str, event_type: str) -> int:
+        date_el = _gedcom_child(node, "DATE")
+        date_info = _parse_gedcom_date(date_el["value"] if date_el else None)
+
+        plac_el = _gedcom_child(node, "PLAC")
+        place_id = self._get_or_create_place(plac_el["value"]) if plac_el else None
+
+        type_el = _gedcom_child(node, "TYPE")
+        desc = _gedcom_text(type_el) if type_el else (node["value"] or None)
+
+        notes = self._collect_notes(node)
+
+        cur = self.conn.execute("""
+            INSERT OR REPLACE INTO events
+                (gramps_id, event_type, date_text, date_year, date_sort, place_id, description, notes)
+            VALUES (?,?,?,?,?,?,?,?)
+        """, (
+            gramps_id, event_type,
+            date_info["date_text"], date_info["date_year"], date_info["date_sort"],
+            place_id, desc, notes,
+        ))
+        self.stats["events"] += 1
+        return cur.lastrowid
+
+    # ── persons (INDI) ───────────────────────────────────────────────────────
+
+    SEX_MAP = {"M": "M", "F": "F", "U": "U", "X": "N"}
+
+    def _import_persons(self, records):
+        for el in records:
+            if el["tag"] != "INDI" or not el["xref"]:
+                continue
+            gid = el["xref"]
+
+            sex_el = _gedcom_child(el, "SEX")
+            gender = self.SEX_MAP.get((sex_el["value"] or "U").strip().upper(), "U") if sex_el else "U"
+
+            names = _gedcom_children(el, "NAME")
+            given = surname = suffix = None
+            if names:
+                given, surname, suffix = self._parse_name(names[0]["value"] or "")
+
+            notes = self._collect_notes(el)
+
+            cur = self.conn.execute("""
+                INSERT OR REPLACE INTO persons
+                    (gramps_id, gender, name_given, name_surname, name_suffix, notes)
+                VALUES (?,?,?,?,?,?)
+            """, (gid, gender, given, surname, suffix, notes))
+            person_db_id = cur.lastrowid
+            self._person_map[gid] = person_db_id
+            self.stats["persons"] += 1
+
+            # Alternate names
+            for alt in names[1:]:
+                a_given, a_surname, a_suffix = self._parse_name(alt["value"] or "")
+                self.conn.execute("""
+                    INSERT INTO person_names (person_id, name_type, given, surname, suffix)
+                    VALUES (?,?,?,?,?)
+                """, (person_db_id, "Also Known As", a_given, a_surname, a_suffix))
+
+            birth_year = death_year = None
+            event_counter = 0
+            for child in el["children"]:
+                tag = child["tag"]
+                if tag in GEDCOM_EVENT_TYPES and tag not in (
+                    "MARR", "DIV", "DIVF", "ENGA", "MARB", "MARC", "MARL", "MARS", "ANUL"
+                ):
+                    event_counter += 1
+                    etype = GEDCOM_EVENT_TYPES[tag]
+                    event_db_id = self._import_event(child, f"{gid}_{tag}{event_counter}", etype)
+                    self.conn.execute("""
+                        INSERT OR IGNORE INTO person_events (person_id, event_id, role)
+                        VALUES (?,?,?)
+                    """, (person_db_id, event_db_id, "Primary"))
+
+                    ev = self.conn.execute(
+                        "SELECT date_year FROM events WHERE id=?", (event_db_id,)
+                    ).fetchone()
+                    year = ev[0] if ev else None
+                    if year:
+                        if etype in ("Birth", "Baptism", "Christening") and not birth_year:
+                            birth_year = year
+                        elif etype in ("Death", "Burial") and not death_year:
+                            death_year = year
+
+                elif tag in GEDCOM_ATTR_TYPES:
+                    value = _gedcom_text(child)
+                    if value:
+                        self.conn.execute("""
+                            INSERT INTO person_attributes (person_id, attr_type, value)
+                            VALUES (?,?,?)
+                        """, (person_db_id, GEDCOM_ATTR_TYPES[tag], value))
+
+                elif tag == "OBJE" and child["value"]:
+                    val = child["value"].strip()
+                    if val.startswith("@") and val.endswith("@"):
+                        media_db_id = self._media_map.get(val[1:-1])
+                        if media_db_id:
+                            self.conn.execute("""
+                                INSERT OR IGNORE INTO person_media (person_id, media_id)
+                                VALUES (?,?)
+                            """, (person_db_id, media_db_id))
+
+            if birth_year or death_year:
+                self.conn.execute("""
+                    UPDATE persons SET birth_year=?, death_year=?, is_living=?
+                    WHERE id=?
+                """, (birth_year, death_year, 1 if not death_year else 0, person_db_id))
+
+    @staticmethod
+    def _parse_name(raw: str):
+        """Parse GEDCOM 'Given /Surname/ Suffix' into (given, surname, suffix)."""
+        m = re.match(r"^(.*?)/(.*)/\s*(.*)$", raw)
+        if m:
+            given = m.group(1).strip() or None
+            surname = m.group(2).strip() or None
+            suffix = m.group(3).strip() or None
+            return given, surname, suffix
+        given = raw.strip() or None
+        return given, None, None
+
+    # ── families (FAM) ───────────────────────────────────────────────────────
+
+    def _import_families(self, records):
+        for el in records:
+            if el["tag"] != "FAM" or not el["xref"]:
+                continue
+            gid = el["xref"]
+
+            husb_el = _gedcom_child(el, "HUSB")
+            wife_el = _gedcom_child(el, "WIFE")
+            father_handle = husb_el["value"].strip("@") if husb_el and husb_el["value"] else None
+            mother_handle = wife_el["value"].strip("@") if wife_el and wife_el["value"] else None
+
+            cur = self.conn.execute("""
+                INSERT OR REPLACE INTO families (gramps_id, rel_type, father_id, mother_id)
+                VALUES (?,?,?,?)
+            """, (
+                gid, "Married",
+                self._person_map.get(father_handle) if father_handle else None,
+                self._person_map.get(mother_handle) if mother_handle else None,
+            ))
+            family_db_id = cur.lastrowid
+            self._family_map[gid] = family_db_id
+            self.stats["families"] += 1
+
+            for chil_el in _gedcom_children(el, "CHIL"):
+                if not chil_el["value"]:
+                    continue
+                child_handle = chil_el["value"].strip("@")
+                child_db_id = self._person_map.get(child_handle)
+                if child_db_id:
+                    self.conn.execute("""
+                        INSERT OR IGNORE INTO family_children (family_id, child_id)
+                        VALUES (?,?)
+                    """, (family_db_id, child_db_id))
+
+            event_counter = 0
+            for child in el["children"]:
+                tag = child["tag"]
+                if tag in ("MARR", "DIV", "DIVF", "ENGA", "MARB", "MARC", "MARL", "MARS", "ANUL", "CENS"):
+                    event_counter += 1
+                    etype = GEDCOM_EVENT_TYPES.get(tag, "Custom")
+                    event_db_id = self._import_event(child, f"{gid}_{tag}{event_counter}", etype)
+                    self.conn.execute("""
+                        INSERT OR IGNORE INTO family_events (family_id, event_id)
+                        VALUES (?,?)
+                    """, (family_db_id, event_db_id))
+
+    # ── main entry point ─────────────────────────────────────────────────────
+
+    def run(self, path: Path, progress_cb=None) -> dict:
+        def _progress(msg):
+            if progress_cb:
+                progress_cb(msg)
+            else:
+                print(f"  {msg}")
+
+        _progress("Loading GEDCOM file...")
+        lines = _parse_gedcom_lines(path)
+        records = _build_gedcom_tree(lines)
+
+        steps = [
+            ("Notes",        self._import_notes),
+            ("Repositories", self._import_repositories),
+            ("Sources",      self._import_sources),
+            ("Media objects",self._import_media),
+            ("People",       self._import_persons),
+            ("Families",     self._import_families),
+        ]
+
+        for label, fn in steps:
+            _progress(f"Importing {label}...")
+            try:
+                fn(records)
+                self.conn.commit()
+            except Exception as e:
+                self.stats["errors"] += 1
+                _progress(f"  ERROR in {label}: {e}")
+                self.conn.rollback()
+
+        self.conn.close()
+        return self.stats
+
+
+def import_genealogy_file(path: Path, db_path: Path, progress_cb=None) -> dict:
+    """Dispatch to GrampsImporter or GedcomImporter based on file extension."""
+    if path.suffix.lower() in (".ged", ".gedcom"):
+        return GedcomImporter(db_path).run(path, progress_cb=progress_cb)
+    return GrampsImporter(db_path).run(path, progress_cb=progress_cb)
+
+
 # ── Flask API route ───────────────────────────────────────────────────────────
 
 def register_gramps_routes(app, db_path: Path):
@@ -607,13 +1175,12 @@ def register_gramps_routes(app, db_path: Path):
             _status["running"] = True
             _status["messages"] = []
             _status["stats"] = {}
-            importer = GrampsImporter(db_path)
             msgs = []
             def cb(msg):
                 msgs.append(msg)
                 _status["messages"] = msgs[:]
             try:
-                stats = importer.run(Path(file_path), progress_cb=cb)
+                stats = import_genealogy_file(Path(file_path), db_path, progress_cb=cb)
                 _status["stats"] = stats
             finally:
                 _status["running"] = False
@@ -714,7 +1281,7 @@ if __name__ == "__main__":
     from database import init_db
 
     if len(sys.argv) < 2:
-        print("Usage: python gramps_import.py yourfile.gramps [--db path/to/db]")
+        print("Usage: python gramps_import.py yourfile.gramps|yourfile.ged [--db path/to/db]")
         sys.exit(1)
 
     gramps_file = Path(sys.argv[1])
@@ -727,8 +1294,7 @@ if __name__ == "__main__":
     init_db(db)
 
     print(f"Importing {gramps_file} → {db}")
-    importer = GrampsImporter(db)
-    stats = importer.run(gramps_file)
+    stats = import_genealogy_file(gramps_file, db)
 
     print("\nImport complete:")
     for k, v in stats.items():

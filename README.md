@@ -45,9 +45,9 @@ Gramps → Family Trees → Export → Gramps XML (.gramps)
 Then: python gramps_import.py yourfile.gramps
 ```
 
-### From Ancestry.com:
+### From Ancestry.com / Webtrees / FamilySearch / MyHeritage (GEDCOM):
 ```
-Ancestry → Settings → Download your data → Download
+Export your tree as a GEDCOM (.ged) file
 Then: python gramps_import.py yourfile.ged
 ```
 

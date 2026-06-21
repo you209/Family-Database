@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System deps for face AI and image processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libatlas-base-dev libglib2.0-0 libsm6 libxext6 libxrender-dev \
+    libopenblas-dev libglib2.0-0 libsm6 libxext6 libxrender-dev \
     tesseract-ocr ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
