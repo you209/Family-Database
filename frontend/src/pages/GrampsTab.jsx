@@ -131,6 +131,7 @@ export default function GrampsTab() {
 
   // drag-drop direct file
   const [dragOver, setDragOver] = useState(false);
+  const [selectedFileObj, setSelectedFileObj] = useState(null); // raw File, for direct upload
   const fileRef = useRef(null);
 
   const importLogRef = useRef(null);
@@ -248,9 +249,23 @@ export default function GrampsTab() {
 
   // ── run import (and optionally ingest) ────────────────────────────────────
 
-  const handleImport = () => {
+  const handleImport = async () => {
     if (!selectedFile) return;
-    startImport(selectedFile).then(() => {
+    let path = selectedFile;
+    if (selectedFileObj) {
+      try {
+        const form = new FormData();
+        form.append("file", selectedFileObj);
+        const res = await fetch(`${API}/api/gramps/upload`, { method: "POST", body: form });
+        const d = await res.json();
+        if (!res.ok) { setImportLog([`✗ Error: ${d.error}`]); return; }
+        path = d.file_path;
+      } catch (e) {
+        setImportLog([`✗ Upload error: ${e.message}`]);
+        return;
+      }
+    }
+    startImport(path).then(() => {
       if (ingestPhotos && scanPath.trim()) {
         startIngest(scanPath.trim());
       }
@@ -262,11 +277,11 @@ export default function GrampsTab() {
     e.preventDefault();
     setDragOver(false);
     const f = e.dataTransfer.files[0];
-    if (f) { setSelectedFile(f.name); setScanResult(null); }
+    if (f) { setSelectedFile(f.name); setSelectedFileObj(f); setScanResult(null); }
   };
   const handleFilePick = (e) => {
     const f = e.target.files[0];
-    if (f) { setSelectedFile(f.name); setScanResult(null); }
+    if (f) { setSelectedFile(f.name); setSelectedFileObj(f); setScanResult(null); }
   };
 
   const busy = importing || ingesting;
@@ -373,7 +388,7 @@ export default function GrampsTab() {
                           name="gedfile"
                           value={f.path}
                           checked={selectedFile === f.path}
-                          onChange={() => setSelectedFile(f.path)}
+                          onChange={() => { setSelectedFile(f.path); setSelectedFileObj(null); }}
                           style={{ accentColor: "var(--accent)" }}
                         />
                         <span style={{ fontSize: 15 }}>

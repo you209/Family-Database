@@ -26,6 +26,7 @@ import gzip
 import json
 import re
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Optional
 from lxml import etree
@@ -571,6 +572,27 @@ def register_gramps_routes(app, db_path: Path):
 
     gramps_bp = Blueprint("gramps", __name__)
     _status = {"running": False, "messages": [], "stats": {}}
+
+    @gramps_bp.route("/api/gramps/upload", methods=["POST"])
+    def gramps_upload():
+        """
+        Accept a directly-uploaded file (drag-and-drop / file picker), since
+        browsers never expose a real filesystem path for those files.
+        Saves it under a temp dir and returns a server-side path that can be
+        passed to /api/gramps/import.
+        """
+        import tempfile
+        f = request.files.get("file")
+        if not f or not f.filename:
+            return jsonify({"error": "No file uploaded"}), 400
+        ext = Path(f.filename).suffix.lower()
+        if ext not in {".gramps", ".ged", ".gedcom"}:
+            return jsonify({"error": "Unsupported file type"}), 400
+        upload_dir = Path(tempfile.gettempdir()) / "familyroot_uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        dest = upload_dir / f"{uuid.uuid4().hex}{ext}"
+        f.save(dest)
+        return jsonify({"ok": True, "file_path": str(dest)})
 
     @gramps_bp.route("/api/gramps/import", methods=["POST"])
     def gramps_import():
