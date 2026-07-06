@@ -1,13 +1,13 @@
-# FamilyRoot — Windows Installer
+# FamilyRoot - Windows Installer
 # Run with: powershell -ExecutionPolicy Bypass -File install-windows.ps1
-# Or right-click → "Run with PowerShell"
+# Or right-click -> "Run with PowerShell"
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $Host.UI.RawUI.WindowTitle = "FamilyRoot Installer"
 
-# ── Helper functions ──────────────────────────────────────────────────────────
+# -- Helper functions ----------------------------------------------------------
 function Info    { param([string]$msg) Write-Host "  $msg" -ForegroundColor Cyan }
 function Success { param([string]$msg) Write-Host "  [OK] $msg" -ForegroundColor Green }
 function Warn    { param([string]$msg) Write-Host "  [WARN] $msg" -ForegroundColor Yellow }
@@ -20,14 +20,14 @@ function Die     {
     exit 1
 }
 
-# ── Banner ────────────────────────────────────────────────────────────────────
+# -- Banner --------------------------------------------------------------------
 Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Green
-Write-Host "   FamilyRoot — Windows Installer" -ForegroundColor Green
+Write-Host "   FamilyRoot - Windows Installer" -ForegroundColor Green
 Write-Host "  ============================================" -ForegroundColor Green
 Write-Host ""
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# -- Paths ---------------------------------------------------------------------
 $Root     = $PSScriptRoot
 $Backend  = Join-Path $Root "backend"
 $Frontend = Join-Path $Root "frontend"
@@ -36,7 +36,7 @@ $DataDir  = Join-Path $Root "data"
 $MediaDir = Join-Path $Root "media"
 $Port     = 5050
 
-# ── 1. Check prerequisites: Python 3.9+ ───────────────────────────────────────
+# -- 1. Check prerequisites: Python 3.9+ ---------------------------------------
 Info "Checking for Python 3.9+..."
 
 $Python = $null
@@ -66,7 +66,7 @@ if (-not $Python) {
 $pyVersion = & $Python --version 2>&1
 Success "Python found: $pyVersion ($Python)"
 
-# ── 2. Check prerequisites: Node.js 18+ ───────────────────────────────────────
+# -- 2. Check prerequisites: Node.js 18+ ---------------------------------------
 Info "Checking for Node.js 18+..."
 
 $NodeOk = $false
@@ -81,14 +81,14 @@ try {
         Write-Host "    Direct download: https://nodejs.org/en/download" -ForegroundColor Yellow
     }
 } catch {
-    Warn "Node.js not found — frontend build will be skipped."
+    Warn "Node.js not found - frontend build will be skipped."
     Write-Host "    Install with: winget install OpenJS.NodeJS.LTS" -ForegroundColor Yellow
     Write-Host "    Or download from: https://nodejs.org/en/download" -ForegroundColor Yellow
 }
 
 Write-Host ""
 
-# ── 3. Create venv and install Python packages ────────────────────────────────
+# -- 3. Create venv and install Python packages --------------------------------
 $VenvPython = Join-Path $Venv "Scripts\python.exe"
 $VenvPip    = Join-Path $Venv "Scripts\pip.exe"
 
@@ -108,7 +108,7 @@ Info "Upgrading pip..."
 try {
     & $VenvPip install --upgrade pip --quiet
 } catch {
-    Warn "pip upgrade failed — continuing anyway"
+    Warn "pip upgrade failed - continuing anyway"
 }
 
 Info "Installing Python dependencies from backend\requirements.txt ..."
@@ -129,7 +129,7 @@ try {
 
 Write-Host ""
 
-# ── 4. Build frontend ─────────────────────────────────────────────────────────
+# -- 4. Build frontend ---------------------------------------------------------
 $DistIndex = Join-Path $Frontend "dist\index.html"
 
 if (Test-Path $DistIndex) {
@@ -166,7 +166,7 @@ if (Test-Path $DistIndex) {
 
 Write-Host ""
 
-# ── 5. Create data directories ────────────────────────────────────────────────
+# -- 5. Create data directories ------------------------------------------------
 Info "Creating data directories..."
 New-Item -ItemType Directory -Force -Path $DataDir                    | Out-Null
 New-Item -ItemType Directory -Force -Path "$MediaDir\originals"       | Out-Null
@@ -175,7 +175,7 @@ Success "Directories ready (data\, media\originals\, media\thumbnails\)"
 
 Write-Host ""
 
-# ── 6. Write FamilyRoot.bat launcher ─────────────────────────────────────────
+# -- 6. Write FamilyRoot.bat launcher -----------------------------------------
 $BatPath = Join-Path $Root "FamilyRoot.bat"
 $BatContent = @"
 @echo off
@@ -215,7 +215,7 @@ Success "Created FamilyRoot.bat launcher"
 
 Write-Host ""
 
-# ── 7. Optional: Windows scheduled task for auto-start ───────────────────────
+# -- 7. Optional: Windows scheduled task for auto-start -----------------------
 $autoStart = Read-Host "  Start FamilyRoot automatically at login? (y/n)"
 if ($autoStart -match "^[Yy]") {
     Info "Registering scheduled task 'FamilyRoot' for current user..."
@@ -233,7 +233,7 @@ if ($autoStart -match "^[Yy]") {
             -Principal $principal `
             -Force | Out-Null
 
-        Success "Scheduled task 'FamilyRoot' registered — will start at next login"
+        Success "Scheduled task 'FamilyRoot' registered - will start at next login"
     } catch {
         Warn "Could not register scheduled task: $_"
         Write-Host "    You can add it manually via Task Scheduler if needed." -ForegroundColor Yellow
@@ -244,7 +244,7 @@ if ($autoStart -match "^[Yy]") {
 
 Write-Host ""
 
-# ── Success banner ────────────────────────────────────────────────────────────
+# -- Success banner ------------------------------------------------------------
 Write-Host "  ============================================" -ForegroundColor Green
 Write-Host "   FamilyRoot installation complete!" -ForegroundColor Green
 Write-Host "  ============================================" -ForegroundColor Green
@@ -254,8 +254,8 @@ Write-Host "http://localhost:$Port" -ForegroundColor White
 Write-Host ""
 Write-Host "  To start FamilyRoot:" -ForegroundColor Cyan
 Write-Host "    Double-click  FamilyRoot.bat  in this folder" -ForegroundColor White
-Write-Host "    — or —" -ForegroundColor Gray
-Write-Host "    Right-click start-windows.ps1 → Run with PowerShell" -ForegroundColor White
+Write-Host "    - or -" -ForegroundColor Gray
+Write-Host "    Right-click start-windows.ps1 -> Run with PowerShell" -ForegroundColor White
 Write-Host ""
 Write-Host "  Integration scripts (Gramps, Photoprism, etc.):" -ForegroundColor Cyan
 Write-Host "    See the scripts\ folder for optional integrations" -ForegroundColor White
