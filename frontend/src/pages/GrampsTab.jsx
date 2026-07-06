@@ -104,6 +104,81 @@ function LogBox({ lines, running, logRef }) {
   );
 }
 
+function DiffPanel({ diff }) {
+  const [showAdded,   setShowAdded]   = useState(false);
+  const [showUpdated, setShowUpdated] = useState(false);
+  if (!diff) return null;
+
+  const { added, updated } = diff;
+  const hasAdded   = added.persons.length > 0 || added.families > 0 || added.events > 0 || added.places > 0;
+  const hasUpdated = updated.persons.length > 0;
+  if (!hasAdded && !hasUpdated) return (
+    <div style={{ fontSize: 12, color: "var(--text-tertiary)", padding: "8px 0" }}>
+      No changes detected — database is already up to date.
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+      {hasAdded && (
+        <div style={{ background: "var(--bg-input)", borderRadius: 8, overflow: "hidden" }}>
+          <div
+            onClick={() => added.persons.length > 0 && setShowAdded(s => !s)}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+              cursor: added.persons.length > 0 ? "pointer" : "default",
+            }}
+          >
+            <span style={{ fontSize: 15 }}>✦</span>
+            <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "var(--accent)" }}>
+              {added.persons.length} {added.persons.length === 1 ? "person" : "people"} added
+            </div>
+            {added.families > 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{added.families} families</span>}
+            {added.events   > 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{added.events} events</span>}
+            {added.places   > 0 && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{added.places} places</span>}
+            {added.persons.length > 0 && (
+              <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{showAdded ? "▲" : "▼"}</span>
+            )}
+          </div>
+          {showAdded && added.persons.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 14px", maxHeight: 180, overflowY: "auto" }}>
+              {added.persons.map((name, i) => (
+                <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", padding: "2px 0" }}>
+                  + {name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasUpdated && (
+        <div style={{ background: "var(--bg-input)", borderRadius: 8, overflow: "hidden" }}>
+          <div
+            onClick={() => setShowUpdated(s => !s)}
+            style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer" }}
+          >
+            <span style={{ fontSize: 15 }}>↻</span>
+            <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "#BA7517" }}>
+              {updated.persons.length} {updated.persons.length === 1 ? "person" : "people"} updated
+            </div>
+            <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{showUpdated ? "▲" : "▼"}</span>
+          </div>
+          {showUpdated && (
+            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 14px", maxHeight: 180, overflowY: "auto" }}>
+              {updated.persons.map((name, i) => (
+                <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", padding: "2px 0" }}>
+                  ↻ {name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 
 export default function GrampsTab() {
@@ -119,6 +194,7 @@ export default function GrampsTab() {
   const [importLog,    setImportLog]    = useState([]);
   const [importDone,   setImportDone]   = useState(false);
   const [importStats,  setImportStats]  = useState(null);
+  const [importDiff,   setImportDiff]   = useState(null);
 
   // photo ingest (from same folder)
   const [ingestPhotos, setIngestPhotos] = useState(true);
@@ -177,6 +253,7 @@ export default function GrampsTab() {
     setImportLog([]);
     setImportDone(false);
     setImportStats(null);
+    setImportDiff(null);
 
     try {
       const res = await fetch(`${API}/api/gramps/import`, {
@@ -196,6 +273,7 @@ export default function GrampsTab() {
         if (data.done) {
           setImportDone(true);
           setImportStats(data.stats);
+          setImportDiff(data.diff || null);
           setImporting(false);
           es.close();
         } else if (data.message) {
@@ -479,11 +557,14 @@ export default function GrampsTab() {
           </SectionHeader>
           <LogBox lines={importLog} running={importing} logRef={importLogRef} />
           {importDone && importStats && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginTop: 12 }}>
-              {Object.entries(importStats).filter(([, v]) => v > 0).map(([k, v]) => (
-                <StatBadge key={k} label={k} value={v} accent={k === "errors" ? "#E07070" : "var(--accent)"} />
-              ))}
-            </div>
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginTop: 12 }}>
+                {Object.entries(importStats).filter(([, v]) => v > 0).map(([k, v]) => (
+                  <StatBadge key={k} label={k} value={v} accent={k === "errors" ? "#E07070" : "var(--accent)"} />
+                ))}
+              </div>
+              <DiffPanel diff={importDiff} />
+            </>
           )}
         </div>
       )}

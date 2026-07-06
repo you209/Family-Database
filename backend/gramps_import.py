@@ -1132,6 +1132,67 @@ def import_genealogy_file(path: Path, db_path: Path, progress_cb=None) -> dict:
     return GrampsImporter(db_path).run(path, progress_cb=progress_cb)
 
 
+def diff_import(path: Path, db_path: Path, progress_cb=None) -> dict:
+    """
+    Run import and return both raw stats and a human-readable diff of what changed.
+    Returns {"stats": {...}, "diff": {"added": {...}, "updated": {...}}}.
+    """
+    def _snapshot(conn):
+        persons = {
+            row[0]: (row[1], row[2], row[3], row[4])
+            for row in conn.execute(
+                "SELECT gramps_id, name_given, name_surname, birth_year, death_year FROM persons"
+            )
+        }
+        families = set(
+            row[0] for row in conn.execute("SELECT gramps_id FROM families WHERE gramps_id IS NOT NULL")
+        )
+        events  = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        places  = conn.execute("SELECT COUNT(*) FROM places").fetchone()[0]
+        sources = conn.execute("SELECT COUNT(*) FROM sources").fetchone()[0]
+        return persons, families, events, places, sources
+
+    conn = sqlite3.connect(db_path)
+    before = _snapshot(conn)
+    conn.close()
+
+    stats = import_genealogy_file(path, db_path, progress_cb=progress_cb)
+
+    conn = sqlite3.connect(db_path)
+    after = _snapshot(conn)
+    conn.close()
+
+    before_persons, before_fams, before_ev, before_pl, before_src = before
+    after_persons,  after_fams,  after_ev,  after_pl,  after_src  = after
+
+    def _label(row):
+        given, surname, birth, death = row
+        name = " ".join(p for p in [given, surname] if p) or "Unknown"
+        if birth or death:
+            name += f" ({birth or '?'} – {death or 'living'})"
+        return name
+
+    new_ids     = set(after_persons) - set(before_persons)
+    updated_ids = {
+        gid for gid in (set(after_persons) & set(before_persons))
+        if after_persons[gid] != before_persons[gid]
+    }
+
+    diff = {
+        "added": {
+            "persons":  [_label(after_persons[g]) for g in sorted(new_ids)],
+            "families": len(after_fams - before_fams),
+            "events":   max(0, after_ev  - before_ev),
+            "places":   max(0, after_pl  - before_pl),
+            "sources":  max(0, after_src - before_src),
+        },
+        "updated": {
+            "persons": [_label(after_persons[g]) for g in sorted(updated_ids)],
+        },
+    }
+    return {"stats": stats, "diff": diff}
+
+
 # ── Flask API route ───────────────────────────────────────────────────────────
 
 def register_gramps_routes(app, db_path: Path):
@@ -1139,7 +1200,7 @@ def register_gramps_routes(app, db_path: Path):
     import threading, json as _json
 
     gramps_bp = Blueprint("gramps", __name__)
-    _status = {"running": False, "messages": [], "stats": {}}
+    _status = {"running": False, "messages": [], "stats": {}, "diff": {}}
 
     @gramps_bp.route("/api/gramps/upload", methods=["POST"])
     def gramps_upload():
@@ -1175,13 +1236,15 @@ def register_gramps_routes(app, db_path: Path):
             _status["running"] = True
             _status["messages"] = []
             _status["stats"] = {}
+            _status["diff"] = {}
             msgs = []
             def cb(msg):
                 msgs.append(msg)
                 _status["messages"] = msgs[:]
             try:
-                stats = import_genealogy_file(Path(file_path), db_path, progress_cb=cb)
-                _status["stats"] = stats
+                result = diff_import(Path(file_path), db_path, progress_cb=cb)
+                _status["stats"] = result["stats"]
+                _status["diff"]  = result["diff"]
             finally:
                 _status["running"] = False
 
@@ -1199,7 +1262,7 @@ def register_gramps_routes(app, db_path: Path):
                     yield f"data: {_json.dumps({'message': msg})}\n\n"
                 seen = len(msgs)
                 time.sleep(0.3)
-            yield f"data: {_json.dumps({'done': True, 'stats': _status['stats']})}\n\n"
+            yield f"data: {_json.dumps({'done': True, 'stats': _status['stats'], 'diff': _status['diff']})}\n\n"
         return Response(generate(), mimetype="text/event-stream")
 
     @gramps_bp.route("/api/gramps/scan")
