@@ -1,193 +1,174 @@
 # FamilyRoot
 
-A local-first family history database with Picasa-style photo management, AI face recognition, and Gramps compatibility. Runs entirely on your machine — no cloud, no subscription.
+**A local-first family history app** — photos, family tree, timeline, map, AI face recognition, and Gramps compatibility, all running on your own machine. No cloud, no subscription, no data leaving your home.
+
+The goal is a single self-hosted app that replaces the patchwork of Ancestry subscriptions, scattered photo folders, and desktop genealogy software with one clean interface you can open from any device on your network. Everything is stored in a single SQLite file you own and control.
 
 ---
 
-## Quick start
+## What it does
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/familydatabase.git
-cd familydatabase
-
-# 2. Install Python dependencies
-cd backend
-pip install -r requirements.txt
-
-# 3. Start the server
-python app.py
-
-# 4. Open http://localhost:5050
-```
-
-The database is created automatically at `data/familyroot.db`.
-
----
-
-## Import your photos
-
-### From a folder (drag & drop in the UI, or CLI):
-```bash
-python photo_engine.py /path/to/your/photos
-```
-
-This will:
-- Extract EXIF date, GPS coordinates, camera model
-- Guess the year from the filename if EXIF is missing (e.g. `scan_1935_wedding.jpg`)
-- Generate square thumbnails (400px)
-- Detect faces using InsightFace ArcFace
-- Cluster faces with DBSCAN so the same person is grouped across all photos
-
-### From Gramps:
-```
-Gramps → Family Trees → Export → Gramps XML (.gramps)
-Then: python gramps_import.py yourfile.gramps
-```
-
-### From Ancestry.com / Webtrees / FamilySearch / MyHeritage (GEDCOM):
-```
-Export your tree as a GEDCOM (.ged) file
-Then: python gramps_import.py yourfile.ged
-```
-
----
-
-## AI face recognition
-
-FamilyRoot uses **InsightFace** (ArcFace, buffalo_sc model) — the same technology used in many commercial apps, running entirely on your computer.
-
-### How it works
-
-1. **Detect** — every face in every photo gets a 512-dimension "fingerprint" (embedding)
-2. **Cluster** — DBSCAN groups similar fingerprints together. Each cluster = one person
-3. **Name** — you click a cluster and say "this is William Smith". Done.
-4. **Propagate** — all photos in that cluster are now tagged with William automatically
-
-### Naming unknown faces
-
-In the UI: **By person → Unknown person clusters → click a cluster → assign to person**
-
-Or via the API:
-```bash
-curl -X POST http://localhost:5050/api/faces/clusters/3/assign \
-     -H "Content-Type: application/json" \
-     -d '{"person_id": 7}'
-```
-
-### Re-clustering after adding more photos
-```bash
-curl -X POST http://localhost:5050/api/photos/recluster
-```
-
----
-
-## Editing metadata on old scans
-
-For scanned photos with no EXIF data, set metadata in the photo detail panel:
-
-| Field | How to set |
+| Feature | Description |
 |---|---|
-| **Date** | Click edit — enter anything from "1935" to "Abt. 1920s" to "12 Jun 1948" |
-| **Place** | Type a place name — it links to the places database |
-| **People** | The AI suggests names; you confirm or correct them |
-| **Description** | Free text — who's in it, what's the occasion, where was it taken |
-| **Tags** | Add custom tags like "Wedding", "Military", "School" |
-
-The AI also attempts **decade estimation** from clothing, hairstyle, and photo format using CLIP — this appears as a suggestion you can accept or override.
+| **Photo library** | Import photos from USB, folder, or network share. EXIF extraction, GPS mapping, thumbnail generation, decade estimation from AI. |
+| **Face recognition** | Automatically detects and clusters faces across all photos. Name a cluster once — every photo updates. |
+| **Family tree** | Pedigree and descendant views, bubble chart, relationship calculator. |
+| **Timeline** | All life events on a scrollable, filterable timeline. |
+| **Map** | Places database with Leaflet map — birth towns, migration routes, photo locations. |
+| **Gramps import/export** | Drag and drop a `.gramps` or `.ged` file to import. Export back to GEDCOM 5.5.1 or Gramps XML at any time. |
+| **Sources & citations** | Attach sources to any person, event, or place. Citation quality tracking. |
+| **Notes & documents** | Rich notes attached to any record. |
+| **Statistics dashboard** | Charts of births by decade, surnames, gender split, generation depth, and more. |
+| **Calendar** | Upcoming birthdays and anniversaries. |
+| **AI stories** | Use a local Ollama model to generate a biography narrative for any person. |
+| **Global search** | Search across people, places, events, and photos from the sidebar. |
+| **Backup & restore** | One-click backup to a zip file. Restore from the same zip. |
+| **Export** | GEDCOM, CSV, and plain-text life summaries. |
+| **Shared access** | Optional PIN-protected access so other family members on your network can view (but not edit) the data. |
+| **Photo slideshow** | Fullscreen slideshow with keyboard navigation, auto-play, and person tags. |
+| **Print view** | Print-optimised layout for any page. |
+| **Dark theme** | Full dark UI throughout. |
 
 ---
 
-## Photo enhancement
+## Install
 
-For old scans, the AI enhancement pipeline (under **AI assistant**) offers:
+### Windows
 
-| Tool | What it does |
-|---|---|
-| **Denoise** | Real-ESRGAN — removes scan grain and JPEG artifacts |
-| **Upscale** | 4× resolution increase for small originals |
-| **Colourisation** | DeOldify — adds plausible colour to B&W photos |
-| **Face restore** | GFPGAN — sharpens blurry or damaged faces |
+```powershell
+git clone https://github.com/you209/Family-Database.git
+cd Family-Database
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\install-windows.ps1
+```
 
-Install the larger models as needed:
+The installer checks for Python and Node.js, creates a virtual environment, installs dependencies, builds the frontend, and creates `FamilyRoot.bat`. Double-click `FamilyRoot.bat` to start.
+
+### Raspberry Pi / Linux
+
 ```bash
-pip install realesrgan gfpgan
-# DeOldify is large (~1GB); install separately if you want colourisation
+git clone https://github.com/you209/Family-Database.git
+cd Family-Database
+bash install.sh
 ```
+
+Installs as a systemd service, starts on boot. Access at `http://<your-pi-ip>:5050`.
+
+### Docker Compose
+
+```bash
+git clone https://github.com/you209/Family-Database.git
+cd Family-Database
+cp .env.example .env   # edit SECRET_KEY at minimum
+docker-compose up -d
+```
+
+Runs FamilyRoot on port 5050, with optional PhotoPrism (port 2342) and Gramps Web (port 5055) alongside it.
+
+### Home Assistant OS add-on
+
+Add this repository as a custom add-on repository in Home Assistant:
+
+```
+https://github.com/you209/Family-Database
+```
+
+Then install **FamilyRoot** from the add-on store. Data is stored in `/share/familyroot` on your HA instance and survives updates.
+
+### Direct run (any OS)
+
+```bash
+pip install -r backend/requirements.txt
+cd frontend && npm install && npm run build && cd ..
+cd backend && python app.py
+```
+
+Open `http://localhost:5050`.
 
 ---
 
-## Gramps integration
+## Importing your family tree
 
-The **Gramps** tab lets you import and export your family tree data.
+**Drag and drop** a `.gramps` or `.ged` file onto the Import page, or point it at a folder (USB drive, network share) to scan for genealogy files and photos together.
 
-Import a `.gramps` or `.ged` file via drag & drop or file path. All people, families, events, places, sources, citations, and media links are imported. You can re-import at any time — existing records are updated, not duplicated.
+Supported sources:
+- **Gramps** — export via File > Export > Gramps XML
+- **Ancestry / FamilySearch / MyHeritage / Webtrees** — export as GEDCOM (.ged)
+- **Any GEDCOM 5.5 / 5.5.1 / 7.0 file**
 
-Export back to Gramps XML or GEDCOM 5.5.1 at any time from the same tab.
-
-API endpoints:
-- `POST /api/gramps/import` — start import `{ "file_path": "..." }`
-- `GET  /api/gramps/import/status` — SSE stream of import progress
-- `GET  /api/gramps/stats` — summary counts for the Gramps tab UI
-- `GET  /api/gramps/export/gramps` — download as Gramps XML
-- `GET  /api/gramps/export/gedcom` — download as GEDCOM 5.5.1
+Re-importing is safe — existing records are updated, not duplicated.
 
 ---
 
-## Data model overview
+## AI features
 
-```
-persons ──< person_events >── events
-   │                              └── places
-   └──< person_media >── media (photos)
-                            └──< face_detections >── face_clusters
+### Face recognition (local)
+Uses **InsightFace ArcFace** — the same technology as commercial apps, running entirely on your machine. Every face gets a 512-dimension fingerprint, faces are clustered automatically, and you name each cluster once.
 
-families ──< family_children ── persons
-        └──< family_events >── events
-```
+### AI stories (Ollama)
+Connect a local **Ollama** instance to generate biography narratives, photo descriptions, and relationship summaries using any model you have installed (llama3, mistral, etc.).
 
-All data lives in `data/familyroot.db` — a single SQLite file you can back up, copy, or open with any SQLite browser.
+### Photo enhancement (optional)
+Old scans can be denoised, upscaled 4x, colourised, and face-restored using Real-ESRGAN, DeOldify, and GFPGAN — all running locally.
+
+---
+
+## Optional integrations
+
+These are standalone installer scripts in the `scripts/` folder:
+
+| Script | What it installs |
+|---|---|
+| `install-photoprism.sh` | PhotoPrism on port 2342 — advanced photo management alongside FamilyRoot |
+| `install-gramps-web.sh` | Gramps Web API on port 5055 — web interface for the full Gramps desktop app |
+
+---
+
+## Data & privacy
+
+- Everything lives in `data/familyroot.db` — a single SQLite file. Back it up, copy it, open it with any SQLite browser.
+- Photos are stored in `media/originals/` and `media/thumbnails/`.
+- No data ever leaves your machine unless you explicitly export it.
+- Living people can be flagged `is_living = 1` — their details are hidden from shared/exported views.
+- Shared access (PIN) is opt-in and local-network only.
 
 ---
 
 ## Project structure
 
 ```
-familydatabase/
+Family-Database/
 ├── backend/
-│   ├── app.py              ← Flask entry point — python app.py to run
-│   ├── database.py         ← SQLite connection helpers
-│   ├── schema.sql          ← Full database schema (Gramps-aligned)
-│   ├── photo_engine.py     ← Ingestion, EXIF, face detection, clustering
-│   ├── api_photos.py       ← REST API: /api/photos/*, /api/faces/*
-│   ├── gramps_import.py    ← Gramps XML + GEDCOM importer + /api/gramps/* routes
-│   └── requirements.txt    ← pip install -r requirements.txt
+│   ├── app.py                  Flask entry point
+│   ├── database.py             SQLite helpers
+│   ├── schema.sql              Full database schema
+│   ├── photo_engine.py         Photo ingestion, EXIF, face detection, clustering
+│   ├── gramps_import.py        Gramps XML + GEDCOM importer and /api/gramps/* routes
+│   ├── api_persons.py          People, portraits
+│   ├── api_photos.py           Photos, faces, thumbnails
+│   ├── api_tree.py             Family tree, relationship calculator
+│   ├── api_export.py           GEDCOM, CSV, stats export
+│   ├── api_sources.py          Sources and citations
+│   ├── api_notes.py            Notes attached to any record
+│   ├── api_stats.py            Statistics and calendar
+│   ├── api_search.py           Global search
+│   ├── api_share.py            PIN-protected shared access
+│   ├── api_admin.py            Backup, restore, version, auto-update
+│   ├── api_ollama.py           Ollama AI integration
+│   └── requirements.txt
 ├── frontend/
-│   ├── src/pages/
-│   │   └── GrampsTab.jsx   ← Gramps integration tab (React)
-│   ├── package.json
-│   └── vite.config.js
-├── media/
-│   ├── originals/          ← Full-res copies of your photos
-│   └── thumbnails/         ← 400px square thumbnails
-└── data/
-    └── familyroot.db       ← Everything in one file — back this up!
+│   └── src/pages/              One .jsx file per tab
+├── hassio/                     Home Assistant add-on files
+│   ├── config.yaml
+│   ├── build.yaml
+│   ├── Dockerfile
+│   └── run.sh
+├── scripts/
+│   ├── install-photoprism.sh
+│   └── install-gramps-web.sh
+├── install.sh                  Linux/Pi installer
+├── install-windows.ps1         Windows installer
+├── docker-compose.yml          Docker Compose stack
+├── Dockerfile                  Root Dockerfile for Docker builds
+└── repository.yaml             HA custom add-on repository manifest
 ```
-
----
-
-## Build order
-
-- [x] **Stage 1** — Database schema, photo engine, face AI, REST API
-- [x] **Stage 2** — Gramps XML + GEDCOM import, Gramps integration tab
-- [x] **Stage 3** — React frontend (photo grid, face naming UI, timeline)
-- [ ] **Stage 4** — Family tree visualisation (pedigree, descendant, fan chart)
-- [ ] **Stage 5** — Reports and printed family history books
-
----
-
-## Privacy
-
-Every `persons` row has a `privacy` flag. Living people should have `is_living = 1`.
-The UI can hide living people's details and faces from exports and shared views.
-Your data never leaves your machine.
