@@ -40,7 +40,7 @@ def export_gedcom():
         ).fetchall())
 
         events = rows_to_list(conn.execute(
-            """SELECT pe.person_id, pe.role, e.event_type, e.date_text, e.date_year, pl.place_name
+            """SELECT pe.person_id, pe.role, e.event_type, e.date_text, e.date_year, pl.name AS place_name
                FROM person_events pe
                JOIN events e ON e.id = pe.event_id
                LEFT JOIN places pl ON pl.id = e.place_id
@@ -48,12 +48,21 @@ def export_gedcom():
         ).fetchall())
 
         families = rows_to_list(conn.execute(
-            "SELECT id, husband_id, wife_id FROM families ORDER BY id"
+            "SELECT id, father_id, mother_id FROM families ORDER BY id"
+        ).fetchall())
+
+        attributes = rows_to_list(conn.execute(
+            "SELECT person_id, attr_type, value FROM person_attributes ORDER BY person_id, id"
         ).fetchall())
 
         children = rows_to_list(conn.execute(
-            "SELECT family_id, person_id FROM family_children ORDER BY family_id, person_id"
+            "SELECT family_id, child_id FROM family_children ORDER BY family_id, child_id"
         ).fetchall())
+
+    # Index person attributes for GEDCOM export.
+    attributes_by_person = {}
+    for attr in attributes:
+        attributes_by_person.setdefault(attr["person_id"], []).append(attr)
 
     # Index events by person_id
     events_by_person = {}
@@ -63,7 +72,7 @@ def export_gedcom():
     # Index children by family_id
     children_by_family = {}
     for ch in children:
-        children_by_family.setdefault(ch["family_id"], []).append(ch["person_id"])
+        children_by_family.setdefault(ch["family_id"], []).append(ch["child_id"])
 
     lines = []
 
@@ -124,14 +133,23 @@ def export_gedcom():
             lines.append("1 DEAT")
             lines.append(f"2 DATE {p['death_year']}")
 
+        # Occupations and other person attributes are exported as GEDCOM tags.
+        # Keep values on one line to avoid malformed GEDCOM records.
+        for attr in attributes_by_person.get(pid, []):
+            tag = {"occupation": "OCCU", "education": "EDUC", "religion": "RELI",
+                   "nationality": "NATI", "title": "TITL"}.get(
+                       (attr["attr_type"] or "").lower())
+            if tag and attr["value"]:
+                lines.append(f"1 {tag} {str(attr['value']).replace(chr(10), ' ')}")
+
     # Families
     for f in families:
         fid = f["id"]
         lines.append(f"0 @F{fid}@ FAM")
-        if f.get("husband_id"):
-            lines.append(f"1 HUSB @I{f['husband_id']}@")
-        if f.get("wife_id"):
-            lines.append(f"1 WIFE @I{f['wife_id']}@")
+        if f.get("father_id"):
+            lines.append(f"1 HUSB @I{f['father_id']}@")
+        if f.get("mother_id"):
+            lines.append(f"1 WIFE @I{f['mother_id']}@")
         for child_id in children_by_family.get(fid, []):
             lines.append(f"1 CHIL @I{child_id}@")
 
@@ -176,7 +194,7 @@ def export_csv_persons():
 def export_csv_events():
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT e.event_type, e.date_text, e.date_year, pl.place_name,
+            """SELECT e.event_type, e.date_text, e.date_year, pl.name AS place_name,
                       (p.name_given || ' ' || COALESCE(p.name_surname, '')) AS person_name,
                       pe.role
                FROM events e
@@ -213,7 +231,7 @@ def export_person_report(person_id):
 
         # Events
         events = rows_to_list(conn.execute(
-            """SELECT e.event_type, e.date_text, e.date_year, pl.place_name, pe.role
+            """SELECT e.event_type, e.date_text, e.date_year, pl.name AS place_name, pe.role
                FROM person_events pe
                JOIN events e ON e.id = pe.event_id
                LEFT JOIN places pl ON pl.id = e.place_id
@@ -224,13 +242,13 @@ def export_person_report(person_id):
 
         # Family relationships — find families where this person is husband or wife
         families_as_spouse = rows_to_list(conn.execute(
-            """SELECT f.id, f.husband_id, f.wife_id,
+            """SELECT f.id, f.father_id, f.mother_id,
                       ph.name_given AS h_given, ph.name_surname AS h_surname,
                       pw.name_given AS w_given, pw.name_surname AS w_surname
                FROM families f
-               LEFT JOIN persons ph ON ph.id = f.husband_id
-               LEFT JOIN persons pw ON pw.id = f.wife_id
-               WHERE f.husband_id = ? OR f.wife_id = ?""",
+               LEFT JOIN persons ph ON ph.id = f.father_id
+               LEFT JOIN persons pw ON pw.id = f.mother_id
+               WHERE f.father_id = ? OR f.mother_id = ?""",
             (person_id, person_id)
         ).fetchall())
 
@@ -239,22 +257,22 @@ def export_person_report(person_id):
             """SELECT p.id, p.name_given, p.name_surname, p.birth_year, p.death_year
                FROM family_children fc
                JOIN families f ON f.id = fc.family_id
-               JOIN persons p ON p.id = fc.person_id
-               WHERE f.husband_id = ? OR f.wife_id = ?
+               JOIN persons p ON p.id = fc.child_id
+               WHERE f.father_id = ? OR f.mother_id = ?
                ORDER BY p.birth_year""",
             (person_id, person_id)
         ).fetchall())
 
         # Parents — find family where this person is a child
         parent_families = rows_to_list(conn.execute(
-            """SELECT f.husband_id, f.wife_id,
+            """SELECT f.father_id, f.mother_id,
                       ph.name_given AS h_given, ph.name_surname AS h_surname,
                       pw.name_given AS w_given, pw.name_surname AS w_surname
                FROM family_children fc
                JOIN families f ON f.id = fc.family_id
-               LEFT JOIN persons ph ON ph.id = f.husband_id
-               LEFT JOIN persons pw ON pw.id = f.wife_id
-               WHERE fc.person_id = ?""",
+               LEFT JOIN persons ph ON ph.id = f.father_id
+               LEFT JOIN persons pw ON pw.id = f.mother_id
+               WHERE fc.child_id = ?""",
             (person_id,)
         ).fetchall())
 
@@ -262,9 +280,9 @@ def export_person_report(person_id):
         siblings = rows_to_list(conn.execute(
             """SELECT DISTINCT p.id, p.name_given, p.name_surname, p.birth_year
                FROM family_children fc1
-               JOIN family_children fc2 ON fc2.family_id = fc1.family_id AND fc2.person_id != ?
-               JOIN persons p ON p.id = fc2.person_id
-               WHERE fc1.person_id = ?
+               JOIN family_children fc2 ON fc2.family_id = fc1.family_id AND fc2.child_id != ?
+               JOIN persons p ON p.id = fc2.child_id
+               WHERE fc1.child_id = ?
                ORDER BY p.birth_year""",
             (person_id, person_id)
         ).fetchall())
@@ -300,9 +318,9 @@ def export_person_report(person_id):
     if parent_families:
         lines.append("Parents:")
         for pf in parent_families:
-            if pf.get("husband_id"):
+            if pf.get("father_id"):
                 lines.append(f"  Father: {full_name(pf['h_given'], pf['h_surname'])}")
-            if pf.get("wife_id"):
+            if pf.get("mother_id"):
                 lines.append(f"  Mother: {full_name(pf['w_given'], pf['w_surname'])}")
         lines.append("")
 
@@ -318,7 +336,7 @@ def export_person_report(person_id):
     if families_as_spouse:
         lines.append("Spouses:")
         for fam in families_as_spouse:
-            if fam["husband_id"] == person_id:
+            if fam["father_id"] == person_id:
                 sp = full_name(fam.get("w_given"), fam.get("w_surname"))
             else:
                 sp = full_name(fam.get("h_given"), fam.get("h_surname"))
