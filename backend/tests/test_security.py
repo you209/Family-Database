@@ -10,8 +10,8 @@ class AuthenticationTests(unittest.TestCase):
     def setUp(self):
         self.app = Flask(__name__)
         self.app.before_request(require_admin)
-        self.app.add_url_rule("/api/private", view_func=lambda: "private")
-        self.app.add_url_rule("/api/health", view_func=lambda: "ok")
+        self.app.add_url_rule("/api/private", endpoint="private", view_func=lambda: "private", methods=["GET", "POST"])
+        self.app.add_url_rule("/api/health", endpoint="health", view_func=lambda: "ok")
         self.client = self.app.test_client()
 
     def test_fails_closed_without_password(self):
