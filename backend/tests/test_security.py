@@ -2,6 +2,7 @@
 import os
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 from flask import Flask
 from security import require_admin
 
@@ -67,6 +68,26 @@ class AuthenticationTests(unittest.TestCase):
     def test_health_is_public(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(self.client.get("/api/health").status_code, 200)
+
+
+class ReleaseWiringTests(unittest.TestCase):
+    """Static regression guard; full real-backend/browser testing is separate."""
+
+    def test_canonical_entrypoint_installs_api_auth_middleware(self):
+        root = Path(__file__).resolve().parents[2]
+        app = (root / "backend" / "app.py").read_text()
+        compatibility = (root / "app.py").read_text()
+        self.assertIn("app.before_request(require_admin)", app)
+        self.assertIn("from backend.app import app", compatibility)
+        self.assertNotIn('{"origins": "*"}', app)
+
+    def test_compose_ports_private_and_secret_env_required(self):
+        root = Path(__file__).resolve().parents[2]
+        compose = (root / "docker-compose.yml").read_text()
+        for port in ("5050:5050", "2342:2342", "5055:5000"):
+            self.assertIn("127.0.0.1:" + port, compose)
+        self.assertIn("FAMILYROOT_ADMIN_PASSWORD=${FAMILYROOT_ADMIN_PASSWORD:?", compose)
+        self.assertIn("SECRET_KEY=${SECRET_KEY:?", compose)
 
 
 if __name__ == "__main__":
