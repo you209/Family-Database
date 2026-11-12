@@ -387,74 +387,79 @@ def admin_ingest_status():
 def admin_backup():
     from database import DB_PATH
 
+    from database import get_db
+    import sqlite3
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Add database
-        db_path = Path(DB_PATH)
-        if db_path.exists():
-            zf.write(db_path, "familyroot.db")
-
-        # Add media files
-        media_root = MEDIA_ROOT
-        if media_root.exists():
-            for f in media_root.rglob("*"):
-                if f.is_file():
-                    zf.write(f, str(f.relative_to(media_root.parent)))
-
+    with tempfile.TemporaryDirectory() as tmp:
+        snapshot = Path(tmp) / "familyroot.db"
+        with sqlite3.connect(DB_PATH) as source, sqlite3.connect(snapshot) as target:
+            source.backup(target)
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(snapshot, "familyroot.db")
+            if MEDIA_ROOT.exists():
+                for f in MEDIA_ROOT.rglob("*"):
+                    if f.is_file() and not f.is_symlink():
+                        zf.write(f, str(f.relative_to(MEDIA_ROOT.parent)))
     buf.seek(0)
-    filename = f"familyroot-backup-{date.today().isoformat()}.zip"
-    return send_file(
-        buf,
-        mimetype="application/zip",
-        as_attachment=True,
-        download_name=filename,
-    )
+    return send_file(buf, mimetype="application/zip", as_attachment=True,
+                     download_name=f"familyroot-backup-{date.today().isoformat()}.zip")
 
 
 @admin_bp.route("/api/admin/restore", methods=["POST"])
 def admin_restore():
     from database import DB_PATH
-
+    import sqlite3
     if _ingest_status.get("running"):
-        return jsonify({"error": "Ingestion is currently running; stop it before restoring"}), 409
-
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded (field name: 'file')"}), 400
-
-    uploaded = request.files["file"]
-
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        tmp_path = tmp.name
-        uploaded.save(tmp_path)
-
-    try:
-        with zipfile.ZipFile(tmp_path, "r") as zf:
-            names = zf.namelist()
-            if "familyroot.db" not in names:
-                return jsonify({"error": "Invalid backup: zip does not contain familyroot.db"}), 400
-
-            # Restore database
-            db_path = Path(DB_PATH)
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            with zf.open("familyroot.db") as src, open(db_path, "wb") as dst:
-                shutil.copyfileobj(src, dst)
-
-            # Restore media files
-            media_count = 0
-            media_parent = MEDIA_ROOT.parent
-            for name in names:
-                if name == "familyroot.db":
-                    continue
-                dest = media_parent / name
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(name) as src, open(dest, "wb") as dst:
+        return jsonify({"error": "Ingestion is currently running"}), 409
+    uploaded = request.files.get("file")
+    if not uploaded:
+        return jsonify({"error": "Missing backup file"}), 400
+    max_bytes = 1024 * 1024 * 1024
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / "backup.zip"
+        uploaded.save(archive)
+        if archive.stat().st_size > max_bytes:
+            return jsonify({"error": "Backup exceeds size limit"}), 413
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                members = zf.infolist()
+                if "familyroot.db" not in zf.namelist():
+                    return jsonify({"error": "Database missing"}), 400
+                if sum(m.file_size for m in members) > max_bytes:
+                    return jsonify({"error": "Uncompressed backup too large"}), 413
+                root = MEDIA_ROOT.parent.resolve()
+                for member in members:
+                    name = member.filename
+                    target = (root / name).resolve()
+                    if name != "familyroot.db" and (
+                        not name.startswith("media/") or not target.is_relative_to(root / "media")
+                    ):
+                        return jsonify({"error": "Unsafe archive path"}), 400
+                    if (member.external_attr >> 16) & 0o170000 == 0o120000:
+                        return jsonify({"error": "Symlinks not allowed"}), 400
+                staged = Path(tmp) / "staged.db"
+                with zf.open("familyroot.db") as src, open(staged, "wb") as dst:
                     shutil.copyfileobj(src, dst)
-                media_count += 1
-
-    finally:
-        os.unlink(tmp_path)
-
-    return jsonify({"ok": True, "restored": {"db": True, "media_files": media_count}})
+                with sqlite3.connect(staged) as db:
+                    if db.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                        return jsonify({"error": "Database integrity check failed"}), 400
+                db_path = Path(DB_PATH)
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                # SQLite online backup replaces the live database safely in WAL mode.
+                with sqlite3.connect(staged) as source, sqlite3.connect(db_path) as target:
+                    source.backup(target)
+                count = 0
+                for member in members:
+                    if member.filename == "familyroot.db" or member.is_dir():
+                        continue
+                    dest = (root / member.filename).resolve()
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as src, open(dest, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    count += 1
+        except (zipfile.BadZipFile, OSError, sqlite3.DatabaseError) as exc:
+            return jsonify({"error": "Invalid backup archive"}), 400
+    return jsonify({"ok": True, "restored": {"db": True, "media_files": count}})
 
 
 # ── auto-update ───────────────────────────────────────────────────────────────

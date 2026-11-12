@@ -1,2 +1,13 @@
 __pycache__/
 *.pyc
+
+.env
+.env.*
+!.env.example
+data/
+media/
+frontend/dist/
+node_modules/
+*.db
+*.db-wal
+*.db-shm

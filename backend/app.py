@@ -10,11 +10,12 @@ Then open: http://localhost:5050
 
 import os
 from pathlib import Path
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request, Response
 from flask_cors import CORS
+from security import require_admin
 
 from database import init_db, DB_PATH
-from api_share import share_bp, check_share_pin
+from api_share import share_bp
 from api_photos import photos_bp
 from api_persons import persons_bp
 from api_admin import admin_bp
@@ -37,14 +38,15 @@ from gramps_import import register_gramps_routes
 # ── App setup ─────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder="../frontend/dist", static_url_path="")
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24))
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/api/*": {"origins": os.environ.get("FAMILYROOT_ALLOWED_ORIGIN", "http://localhost:3000")}}, supports_credentials=False)
+app.before_request(require_admin)
 
 # ── Init DB on startup ────────────────────────────────────────────────────────
 init_db(DB_PATH)
 
 # ── Register blueprints ───────────────────────────────────────────────────────
 app.register_blueprint(share_bp)
-app.before_request(check_share_pin)
+
 app.register_blueprint(photos_bp)
 app.register_blueprint(persons_bp)
 app.register_blueprint(admin_bp)
