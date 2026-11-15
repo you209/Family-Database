@@ -28,9 +28,11 @@ Check the final Compose stack; it must show both `familyroot` and
     sudo docker compose -f deploy/compose.private.yml -f deploy/compose.lan.yml config --quiet
     sudo docker compose -f deploy/compose.private.yml -f deploy/compose.lan.yml config --services
 
-Then start the proxy without deleting any data volume:
+Then start the proxy **and export the local CA certificate** without deleting any data volume:
 
-    sudo docker compose -f deploy/compose.private.yml -f deploy/compose.lan.yml up -d familyroot-web
+    sudo bash deploy/start-lan-web.sh
+
+The helper prints a SHA-256 certificate fingerprint and saves `deploy/familyroot-ca.crt` locally. It does not expose the CA private key or any family account passwords.
     sudo docker compose -f deploy/compose.private.yml -f deploy/compose.lan.yml ps
 
 The new Caddy container listens on **192.168.1.44:15443** on the Docker VM
