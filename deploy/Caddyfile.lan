@@ -1,0 +1,7 @@
+# TLS is essential: the FamilyRoot app uses HTTP Basic credentials.
+# Caddy provides a private local CA; trust its root certificate on each client device.
+https://192.168.1.44 {
+    tls internal
+    encode gzip
+    reverse_proxy familyroot:5050
+}

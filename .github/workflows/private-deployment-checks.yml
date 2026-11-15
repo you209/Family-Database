@@ -31,8 +31,14 @@ jobs:
       - name: Run security and private deployment regression tests
         run: cd backend && python -m unittest discover -s tests -v
       - name: Verify scripts syntax
-        run: bash -n deploy/setup-private.sh deploy/backup-private.sh
+        run: bash -n deploy/setup-private.sh deploy/backup-private.sh deploy/start-lan-web.sh
       - name: Generate temporary CI-only secrets
         run: bash deploy/setup-private.sh
       - name: Validate isolated Compose stack
         run: docker compose -f deploy/compose.private.yml config --quiet
+      - name: Validate HTTPS home-LAN proxy overlay
+        run: |
+          docker compose -f deploy/compose.private.yml -f deploy/compose.lan.yml config --quiet
+          docker compose -f deploy/compose.private.yml -f deploy/compose.lan.yml config --services | grep -Fx familyroot-web
+          test "$(grep -c 'tls internal' deploy/Caddyfile.lan)" = 1
+          test "$(grep -c '192.168.1.44:15443:443' deploy/compose.lan.yml)" = 1

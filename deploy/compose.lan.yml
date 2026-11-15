@@ -1,0 +1,34 @@
+# Optional HTTPS access from the home LAN. Always combine with compose.private.yml.
+# No public Internet forwarding. FamilyRoot's original loopback port remains private.
+name: familyroot-private
+services:
+  familyroot:
+    networks:
+      - familyroot_lan
+  familyroot-web:
+    image: caddy:2.10.2-alpine
+    container_name: familyroot-lan-web
+    restart: unless-stopped
+    depends_on:
+      familyroot:
+        condition: service_healthy
+    ports:
+      - "192.168.1.44:15443:443"
+    volumes:
+      - ./Caddyfile.lan:/etc/caddy/Caddyfile:ro
+      - familyroot_tls_data:/data
+      - familyroot_tls_config:/config
+    networks:
+      - familyroot_lan
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  familyroot_lan:
+    driver: bridge
+
+volumes:
+  familyroot_tls_data:
+    name: familyroot-lan-tls-data
+  familyroot_tls_config:
+    name: familyroot-lan-tls-config
