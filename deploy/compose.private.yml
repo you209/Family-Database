@@ -6,7 +6,7 @@ services:
   familyroot:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: deploy/Dockerfile.private
     container_name: familyroot-private
     restart: unless-stopped
     init: true
