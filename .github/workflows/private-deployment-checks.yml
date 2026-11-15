@@ -31,7 +31,7 @@ jobs:
       - name: Run security and private deployment regression tests
         run: cd backend && python -m unittest discover -s tests -v
       - name: Verify scripts syntax
-        run: bash -n deploy/setup-private.sh deploy/backup-private.sh
+        run: bash -n deploy/setup-private.sh deploy/backup-private.sh deploy/start-lan-web.sh
       - name: Generate temporary CI-only secrets
         run: bash deploy/setup-private.sh
       - name: Validate isolated Compose stack
