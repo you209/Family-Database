@@ -37,7 +37,9 @@ def _browser_write_allowed() -> bool:
 
 
 def require_admin():
-    if not request.path.startswith("/api/") or request.path == "/api/health":
+    # Protect the frontend, originals, thumbnails and downloads too.
+    # Family records must never be reachable via a public file route.
+    if request.path == "/api/health":
         return None
     password = os.environ.get("FAMILYROOT_ADMIN_PASSWORD", "")
     if not password:
