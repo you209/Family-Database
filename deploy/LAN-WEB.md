@@ -12,15 +12,15 @@ Basic-auth HTTP to the LAN.
 
 ## On Docker VM (192.168.1.44)
 
-First, from your existing source checkout, fetch and check out the reviewed LAN
-branch (don't reclone or delete the Docker volumes):
+After the LAN-web pull request is merged into the existing deployment branch,
+update the **same local checkout** (don't reclone or delete the Docker volumes):
 
     cd /home/docker/familyroot-source
-    git fetch origin deploy/familyroot-lan-web-2026-11-16
-    git switch --track origin/deploy/familyroot-lan-web-2026-11-16
+    git pull --ff-only origin deploy/familyroot-private-docker-2026-11-15
 
-If you already track the branch, use `git pull --ff-only` instead. Avoid typing
-your GitHub account password for private repository authentication.
+If the pull says that you have local changes, inspect them first; don't force
+reset or delete your family data. GitHub account passwords do not work for
+Git operations; this public repository does not require a password to read.
 
 Check the final Compose stack; it must show both `familyroot` and
 `familyroot-web` before proceeding:
