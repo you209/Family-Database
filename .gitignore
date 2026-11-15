@@ -11,3 +11,8 @@ node_modules/
 *.db
 *.db-wal
 *.db-shm
+
+# Generated private deployment credentials and archives
+deploy/private-secrets/
+deploy/*.env
+familyroot-backups/
