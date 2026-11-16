@@ -81,7 +81,7 @@ def verify_admin_password(provided):
     except (OSError, ValueError, KeyError, TypeError, UnicodeError):
         return False
     password = _admin_password()
-    return bool(password) and hmac.compare_digest(provided, password)
+    return bool(password) and hmac.compare_digest(provided.encode('utf-8'), password.encode('utf-8'))
 
 
 def admin_password_configured():
