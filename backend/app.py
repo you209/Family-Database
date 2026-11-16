@@ -66,6 +66,27 @@ app.register_blueprint(notes_bp)
 app.register_blueprint(stats_bp)
 register_gramps_routes(app, DB_PATH)
 
+# ── Administrator password rotation ──────────────────────────────────────────
+@app.route("/api/admin/change-password", methods=["POST"])
+def change_password():
+    from security import change_admin_password
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+    current, new = data.get("current_password"), data.get("new_password")
+    if not isinstance(current, str) or not isinstance(new, str):
+        return jsonify({"error": "Current and new passwords required"}), 400
+    if new != data.get("confirm_password"):
+        return jsonify({"error": "New password confirmation does not match"}), 400
+    try:
+        change_admin_password(current, new)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except OSError:
+        return jsonify({"error": "Unable to store new password. Check data volume permissions."}), 503
+    return jsonify({"ok": True, "message": "Password changed. Sign in again with the new password."})
+
+
 # ── Serve React frontend (built) ──────────────────────────────────────────────
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")

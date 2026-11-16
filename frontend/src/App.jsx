@@ -934,6 +934,75 @@ function UpdatesCard({ cardStyle, sectionTitleStyle, btnStyle, accentBtnStyle })
   );
 }
 
+function ChangePasswordCard({ cardStyle, sectionTitleStyle, btnStyle }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const submit = async (event) => {
+    event.preventDefault();
+    setResult(null);
+    if (next.length < 16 || next !== confirm || next === current) {
+      setResult({ ok: false, message: "Use a different password of at least 16 characters, and confirm it." });
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/admin/change-password", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: current,
+          new_password: next,
+          confirm_password: confirm
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Password change failed");
+      setCurrent(""); setNext(""); setConfirm("");
+      setResult({ ok: true, message: "Password changed. Close and reopen this tab, then sign in again using your new password." });
+    } catch (error) {
+      setResult({ ok: false, message: error.message });
+    } finally { setBusy(false); }
+  };
+  return (
+    <div style={cardStyle}>
+      <div style={sectionTitleStyle}>Administrator password</div>
+      <p style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+        Changes are saved in the FamilyRoot data volume, not GitHub.
+        Only enter passwords over your trusted HTTPS address.
+      </p>
+      <form onSubmit={submit}>
+        {[
+          ["Current password", current, setCurrent, "current-password"],
+          ["New password (16+ characters)", next, setNext, "new-password"],
+          ["Confirm new password", confirm, setConfirm, "new-password"]
+        ].map(([label, value, change, autocomplete]) => (
+          <label key={label} style={{ display: "block", fontSize: 12, marginBottom: 12 }}>
+            {label}
+            <input type="password" required minLength={autocomplete === "current-password" ? 1 : 16}
+              maxLength={256} value={value} onChange={e => change(e.target.value)}
+              autoComplete={autocomplete}
+              style={{ display: "block", width: "100%", boxSizing: "border-box",
+                marginTop: 4, padding: 9, borderRadius: 7, border: "1px solid var(--border)",
+                background: "var(--bg-sel)", color: "var(--text-primary)" }} />
+          </label>
+        ))}
+        <button type="submit" style={btnStyle} disabled={busy || window.location.protocol !== "https:"}>
+          {busy ? "Changing…" : "Change password"}
+        </button>
+      </form>
+      {window.location.protocol !== "https:" &&
+        <p style={{ color: "#e05c5c", fontSize: 12 }}>Open FamilyRoot through its HTTPS LAN address to change passwords.</p>}
+      {result && <p role="status" style={{ color: result.ok ? "var(--accent)" : "#e05c5c" }}>
+        {result.message}
+      </p>}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const [stats, setStats] = useState(null);
   const [statsErr, setStatsErr] = useState(false);
@@ -1003,6 +1072,8 @@ function SettingsPage() {
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 24, color: "var(--text-primary)" }}>
         Settings
       </h1>
+
+      <ChangePasswordCard cardStyle={cardStyle} sectionTitleStyle={sectionTitleStyle} btnStyle={btnStyle} />
 
       {/* Database stats */}
       <div style={cardStyle}>
