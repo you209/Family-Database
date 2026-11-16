@@ -1,0 +1,14 @@
+# FamilyRoot uses HTTP Basic authentication, so never expose it over plaintext LAN HTTP.
+# Browser connections to a numeric IP commonly omit TLS SNI. Docker's bridge
+# destination IP is different from the LAN host IP, so Caddy cannot infer
+# the correct certificate without a default SNI name.
+{
+    default_sni 192.168.1.44
+}
+
+# Caddy's internal CA must be trusted on each client before signing in.
+https://192.168.1.44 {
+    tls internal
+    encode gzip
+    reverse_proxy familyroot:5050
+}

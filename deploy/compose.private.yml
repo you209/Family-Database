@@ -1,0 +1,56 @@
+# Deliberately separate from the older three-service docker-compose.yml.
+# Only FamilyRoot is started; no PhotoPrism or Gramps Web containers.
+name: familyroot-private
+
+services:
+  familyroot:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.private
+    container_name: familyroot-private
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:15050:5050"
+    environment:
+      PORT: "5050"
+      DEBUG: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+      FAMILYROOT_DB: /app/data/familyroot.db
+      FAMILYROOT_MEDIA: /app/media
+      FAMILYROOT_ALLOWED_ORIGIN: http://localhost:15050
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        export FAMILYROOT_ADMIN_PASSWORD="$$(cat /run/secrets/familyroot_admin_password)"
+        export SECRET_KEY="$$(cat /run/secrets/familyroot_secret_key)"
+        exec python app.py
+    secrets:
+      - familyroot_admin_password
+      - familyroot_secret_key
+    volumes:
+      - familyroot_data:/app/data
+      - familyroot_media:/app/media
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/api/health', timeout=5).read()"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 120s
+
+secrets:
+  familyroot_admin_password:
+    file: ./private-secrets/admin_password
+  familyroot_secret_key:
+    file: ./private-secrets/flask_secret_key
+
+volumes:
+  familyroot_data:
+    name: familyroot-private-data
+  familyroot_media:
+    name: familyroot-private-media

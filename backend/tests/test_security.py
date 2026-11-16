@@ -65,6 +65,37 @@ class AuthenticationTests(unittest.TestCase):
             self.assertEqual(self.client.post("/api/private",
                 headers={"Authorization": header}).status_code, 200)
 
+    def test_reads_docker_secret_when_env_password_is_missing(self):
+        import base64
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            secret = Path(tmp) / 'admin_password'
+            secret.write_text('secret-from-file\n')
+            with patch.dict(os.environ, {
+                'FAMILYROOT_ADMIN_PASSWORD': '',
+                'FAMILYROOT_ADMIN_PASSWORD_FILE': str(secret)
+            }):
+                self.assertEqual(self.client.get('/api/private').status_code, 401)
+                header = 'Basic ' + base64.b64encode(b'admin:secret-from-file').decode()
+                response = self.client.get('/api/private', headers={'Authorization': header})
+                self.assertEqual(response.status_code, 200)
+
+    def test_unreadable_or_empty_secret_stays_closed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'admin_password'
+            path.write_text('')
+            with patch.dict(os.environ, {
+                'FAMILYROOT_ADMIN_PASSWORD': '',
+                'FAMILYROOT_ADMIN_PASSWORD_FILE': str(path)
+            }):
+                self.assertEqual(self.client.get('/api/private').status_code, 503)
+            with patch.dict(os.environ, {
+                'FAMILYROOT_ADMIN_PASSWORD': '',
+                'FAMILYROOT_ADMIN_PASSWORD_FILE': str(path) + '-missing'
+            }):
+                self.assertEqual(self.client.get('/api/private').status_code, 503)
+
     def test_health_is_public(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(self.client.get("/api/health").status_code, 200)
