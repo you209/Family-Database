@@ -10,6 +10,7 @@ are still required.
 """
 import hmac
 import os
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from flask import request, jsonify
@@ -36,12 +37,29 @@ def _browser_write_allowed() -> bool:
     return parsed.netloc.lower() == request.host.lower()
 
 
+def _admin_password():
+    """Read the Docker secret directly if the shell entrypoint did not export it.
+
+    Remain fail-closed if the file is absent, unreadable, or blank. Never
+    log or include its contents in an HTTP response.
+    """
+    from_env = os.environ.get("FAMILYROOT_ADMIN_PASSWORD", "")
+    if from_env:
+        return from_env
+    secret_path = os.environ.get(
+        "FAMILYROOT_ADMIN_PASSWORD_FILE", "/run/secrets/familyroot_admin_password")
+    try:
+        return Path(secret_path).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError, ValueError):
+        return ""
+
+
 def require_admin():
     # Protect the frontend, originals, thumbnails and downloads too.
     # Family records must never be reachable via a public file route.
     if request.path == "/api/health":
         return None
-    password = os.environ.get("FAMILYROOT_ADMIN_PASSWORD", "")
+    password = _admin_password()
     if not password:
         return jsonify({"error": "Administrator password is not configured"}), 503
 
