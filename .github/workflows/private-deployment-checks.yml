@@ -26,6 +26,14 @@ jobs:
           python-version: "3.11"
       - name: Install minimal backend test dependencies
         run: python -m pip install "flask>=3,<4" "flask-cors>=4,<6"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build FamilyRoot Settings UI
+        run: |
+          cd frontend
+          npm install --no-audit --no-fund
+          npm run build
       - name: Compile backend
         run: python -m compileall -q backend app.py
       - name: Run security and private deployment regression tests
